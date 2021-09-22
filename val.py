@@ -17,16 +17,18 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-FILE = Path(__file__).absolute()
-sys.path.append(FILE.parents[0].as_posix())  # add yolov5/ to path
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0]  # YOLOv5 root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
 
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
 from utils.general import coco80_to_coco91_class, check_dataset, check_img_size, check_requirements, \
     check_suffix, check_yaml, box_iou, non_max_suppression, scale_coords, xyxy2xywh, xywh2xyxy, set_logging, \
-    increment_path, colorstr
+    increment_path, colorstr, print_args
 from utils.metrics import ap_per_class, ConfusionMatrix
-from utils.plots import plot_images, output_to_target, plot_study_txt
+from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, time_sync
 from utils.callbacks import Callbacks
 
@@ -154,22 +156,22 @@ def run(data,
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-    p, r, f1, mp, mr, map50, map, t0, t1, t2 = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
+    dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
-        t_ = time_sync()
+        t1 = time_sync()
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
-        t = time_sync()
-        t0 += t - t_
+        t2 = time_sync()
+        dt[0] += t2 - t1
 
         # Run model
         out, train_out = model(img, augment=augment)  # inference and training outputs
-        t1 += time_sync() - t
+        dt[1] += time_sync() - t2
 
         # Compute loss
         if compute_loss:
@@ -178,9 +180,9 @@ def run(data,
         # Run NMS
         targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
-        t = time_sync()
+        t3 = time_sync()
         out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
-        t2 += time_sync() - t
+        dt[2] += time_sync() - t3
 
         # Statistics per image
         for si, pred in enumerate(out):
@@ -218,7 +220,7 @@ def run(data,
                 save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / (path.stem + '.txt'))
             if save_json:
                 save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
-            callbacks.on_val_image_end(pred, predn, path, names, img[si])
+            callbacks.run('on_val_image_end', pred, predn, path, names, img[si])
 
         # Plot images
         if plots and batch_i < 3:
@@ -247,7 +249,7 @@ def run(data,
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Print speeds
-    t = tuple(x / seen * 1E3 for x in (t0, t1, t2))  # speeds per image
+    t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
     if not training:
         shape = (batch_size, 3, imgsz, imgsz)
         print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {shape}' % t)
@@ -255,7 +257,7 @@ def run(data,
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
-        callbacks.on_val_end()
+        callbacks.run('on_val_end')
 
     # Save JSON
     if save_json and len(jdict):
@@ -295,7 +297,7 @@ def run(data,
 
 
 def parse_opt():
-    parser = argparse.ArgumentParser(prog='val.py')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
@@ -319,13 +321,13 @@ def parse_opt():
     opt.save_json |= opt.data.endswith('coco.yaml')
     opt.save_txt |= opt.save_hybrid
     opt.data = check_yaml(opt.data)  # check YAML
+    print_args(FILE.stem, opt)
     return opt
 
 
 def main(opt):
     set_logging()
-    print(colorstr('val: ') + ', '.join(f'{k}={v}' for k, v in vars(opt).items()))
-    check_requirements(requirements=FILE.parent / 'requirements.txt', exclude=('tensorboard', 'thop'))
+    check_requirements(exclude=('tensorboard', 'thop'))
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         run(**vars(opt))
@@ -348,7 +350,7 @@ def main(opt):
                 y.append(r + t)  # results and times
             np.savetxt(f, y, fmt='%10.4g')  # save
         os.system('zip -r study.zip study_*.txt')
-        plot_study_txt(x=x)  # plot
+        plot_val_study(x=x)  # plot
 
 
 if __name__ == "__main__":

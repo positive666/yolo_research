@@ -29,7 +29,6 @@ import yaml
 
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
-from utils.torch_utils import init_torch_seeds
 
 # Settings
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
@@ -37,6 +36,9 @@ np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format}) 
 pd.options.display.max_columns = 10
 cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with PyTorch DataLoader)
 os.environ['NUMEXPR_MAX_THREADS'] = str(min(os.cpu_count(), 8))  # NumExpr max threads
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[1]  # YOLOv5 root directory
 
 
 class Profile(contextlib.ContextDecorator):
@@ -90,35 +92,53 @@ def set_logging(rank=-1, verbose=True):
         level=logging.INFO if (verbose and rank in [-1, 0]) else logging.WARN)
 
 
+def print_args(name, opt):
+    # Print argparser arguments
+    print(colorstr(f'{name}: ') + ', '.join(f'{k}={v}' for k, v in vars(opt).items()))
+
+
 def init_seeds(seed=0):
-    # Initialize random number generator (RNG) seeds
+    # Initialize random number generator (RNG) seeds https://pytorch.org/docs/stable/notes/randomness.html
+    # cudnn seed 0 settings are slower and more reproducible, else faster and less reproducible
+    import torch.backends.cudnn as cudnn
     random.seed(seed)
     np.random.seed(seed)
-    init_torch_seeds(seed)
+    torch.manual_seed(seed)
+    cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False)
 
 
 def get_latest_run(search_dir='.'):
     # Return path to most recent 'last.pt' in /runs (i.e. to --resume from)
     last_list = glob.glob(f'{search_dir}/**/last*.pt', recursive=True)
     return max(last_list, key=os.path.getctime) if last_list else ''
- 
-def user_config_dir(dir='Ultralytics'):
-    # Return path of user configuration directory (make if necessary)
-    #settings = {'Windows': 'AppData/Roaming', 'Linux': '.config', 'Darwin': 'Library/Application Support'}
-    #path = Path.home() / settings.get(platform.system(), '') / dir
-    system = platform.system()
-    cfg = {'Windows': 'AppData/Roaming', 'Linux': '.config', 'Darwin': 'Library/Application Support'}
-    path = Path.home() / cfg.get(system, '') / dir
-    if system == 'Linux' and not is_writeable(path):  # GCP functions and AWS lambda solution, only /tmp is writeable
-        path = Path('/tmp') / dir
-    if not path.is_dir():
-        path.mkdir()  # make dir if required
+
+
+def user_config_dir(dir='Ultralytics', env_var='YOLOV5_CONFIG_DIR'):
+    # Return path of user configuration directory. Prefer environment variable if exists. Make dir if required.
+    env = os.getenv(env_var)
+    if env:
+        path = Path(env)  # use environment variable
+    else:
+        cfg = {'Windows': 'AppData/Roaming', 'Linux': '.config', 'Darwin': 'Library/Application Support'}  # 3 OS dirs
+        path = Path.home() / cfg.get(platform.system(), '')  # OS-specific config dir
+        path = (path if is_writeable(path) else Path('/tmp')) / dir  # GCP and AWS lambda fix, only /tmp is writeable
+    path.mkdir(exist_ok=True)  # make if required
     return path
-    
- 
-def is_writeable(path):
-    # Return True if path has write permissions (Warning: known issue on Windows)
-    return os.access(path, os.R_OK)
+
+
+def is_writeable(dir, test=False):
+    # Return True if directory has write permissions, test opening a file with write permissions if test=True
+    if test:  # method 1
+        file = Path(dir) / 'tmp.txt'
+        try:
+            with open(file, 'w'):  # open file with write permissions
+                pass
+            file.unlink()  # remove file
+            return True
+        except IOError:
+            return False
+    else:  # method 2
+        return os.access(dir, os.R_OK)  # possible issues on Windows
 
 
 def is_docker():
@@ -137,7 +157,7 @@ def is_colab():
 
 def is_pip():
     # Is file in a pip package?
-    return 'site-packages' in Path(__file__).absolute().parts
+    return 'site-packages' in Path(__file__).resolve().parts
 
 
 def is_ascii(s=''):
@@ -151,9 +171,15 @@ def emojis(str=''):
     return str.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else str
 
 
-def file_size(file):
-    # Return file size in MB
-    return Path(file).stat().st_size / 1e6
+def file_size(path):
+    # Return file/dir size (MB)
+    path = Path(path)
+    if path.is_file():
+        return path.stat().st_size / 1E6
+    elif path.is_dir():
+        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / 1E6
+    else:
+        return 0.0
 
 
 def check_online():
@@ -199,7 +225,7 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
 
 
 @try_except
-def check_requirements(requirements='requirements.txt', exclude=(), install=True):
+def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), install=True):
     # Check installed dependencies meet requirements (pass *.txt file or list of packages)
     prefix = colorstr('red', 'bold', 'requirements:')
     check_python()  # check python version
@@ -262,7 +288,7 @@ def check_imshow():
 
 def check_suffix(file='yolov5s.pt', suffix=('.pt',), msg=''):
     # Check file(s) for acceptable suffixes
-    if any(suffix):
+    if file and suffix:
         if isinstance(suffix, str):
             suffix = [suffix]
         for f in file if isinstance(file, (list, tuple)) else [file]:
@@ -270,14 +296,13 @@ def check_suffix(file='yolov5s.pt', suffix=('.pt',), msg=''):
 
 
 def check_yaml(file, suffix=('.yaml', '.yml')):
-    # Check YAML file(s) for acceptable suffixes
+    # Search/download YAML file (if necessary) and return path, checking suffix
     return check_file(file, suffix)
-
 
 
 def check_file(file, suffix=''):
     # Search/download file (if necessary) and return path
-    check_suffix(file, suffix)
+    check_suffix(file, suffix)  # optional
     file = str(file)  # convert to str()
     if Path(file).is_file() or file == '':  # exists
         return file
@@ -343,6 +368,13 @@ def check_dataset(data, autodownload=True):
                 raise Exception('Dataset not found.')
 
     return data  # dictionary
+
+
+def url2file(url):
+    # Convert URL to filename, i.e. https://url.com/file.txt?auth -> file.txt
+    url = str(Path(url)).replace(':/', '://')  # Pathlib turns :// -> :/
+    file = Path(urllib.parse.unquote(url)).name.split('?')[0]  # '%2F' to '/', split https://url.com/file.txt?auth
+    return file
 
 
 def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1):
