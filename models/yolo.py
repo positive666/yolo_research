@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
 from models.common import *
 from models.experimental import *
 from utils.autoanchor import check_anchor_order
-from utils.general import check_yaml, make_divisible, set_logging
+from utils.general import check_yaml, make_divisible, print_args,set_logging
 from utils.plots import feature_visualization
 from utils.torch_utils import copy_attr, fuse_conv_and_bn, initialize_weights, model_info, scale_img, \
     select_device, time_sync
@@ -51,7 +51,6 @@ class Detect(nn.Module):
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
 
     def forward(self, x):
-        # x = x.copy()  # for profiling
         z = []  # inference output
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
@@ -74,10 +73,14 @@ class Detect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1), x)
 
-    @staticmethod
+  
     def _make_grid(nx=20, ny=20):
-        yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
-        return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
+        d = self.anchors[i].device
+        yv, xv = torch.meshgrid([torch.arange(ny).to(d), torch.arange(nx).to(d)])
+        grid = torch.stack((xv, yv), 2).expand((1, self.na, ny, nx, 2)).float()
+        anchor_grid = (self.anchors[i].clone() * self.stride[i]) \
+            .view((1, self.na, 1, 1, 2)).expand((1, self.na, ny, nx, 2)).float()
+        return grid, anchor_grid
 
 class ASFF_Detect(nn.Module):   #add ASFFV5 layer and Rfb 
     stride = None  # strides computed during build
@@ -137,13 +140,13 @@ class ASFF_Detect(nn.Module):   #add ASFFV5 layer and Rfb
 
 class Model(nn.Module):
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
-        super(Model, self).__init__()
+        super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
         else:  # is *.yaml
             import yaml  # for torch hub
             self.yaml_file = Path(cfg).name
-            with open(cfg) as f:
+            with open(cfg, errors='ignore') as f:
                 self.yaml = yaml.safe_load(f)  # model dict
 
         # Define model
@@ -157,7 +160,6 @@ class Model(nn.Module):
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
-        # LOGGER.info([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
@@ -169,7 +171,6 @@ class Model(nn.Module):
             check_anchor_order(m)
             self.stride = m.stride
             self._initialize_biases()  # only run once
-            # LOGGER.info('Strides: %s' % m.stride.tolist())
 
         # Init weights, biases
         initialize_weights(self)
@@ -192,8 +193,9 @@ class Model(nn.Module):
             # cv2.imwrite(f'img_{si}.jpg', 255 * xi[0].cpu().numpy().transpose((1, 2, 0))[:, :, ::-1])  # save
             yi = self._descale_pred(yi, fi, si, img_size)
             y.append(yi)
+        y = self._clip_augmented(y)  # clip augmented tails
         return torch.cat(y, 1), None  # augmented inference, train
-        
+
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
         for m in self.model:
@@ -206,7 +208,6 @@ class Model(nn.Module):
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         return x
-    
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
@@ -224,7 +225,18 @@ class Model(nn.Module):
                 x = img_size[1] - x  # de-flip lr
             p = torch.cat((x, y, wh, p[..., 4:]), -1)
         return p
-        
+
+    def _clip_augmented(self, y):
+        # Clip YOLOv5 augmented inference tails
+        nl = self.model[-1].nl  # number of detection layers (P3-P5)
+        g = sum(4 ** x for x in range(nl))  # grid points
+        e = 1  # exclude layer count
+        i = (y[0].shape[1] // g) * sum(4 ** x for x in range(e))  # indices
+        y[0] = y[0][:, :-i]  # large
+        i = (y[-1].shape[1] // g) * sum(4 ** (nl - 1 - x) for x in range(e))  # indices
+        y[-1] = y[-1][:, i:]  # small
+        return y
+
     def _profile_one_layer(self, m, x, dt):
         c = isinstance(m, Detect)  # is final layer, copy input as inplace fix
         o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
@@ -237,7 +249,7 @@ class Model(nn.Module):
         LOGGER.info(f'{dt[-1]:10.2f} {o:10.2f} {m.np:10.0f}  {m.type}')
         if c:
             LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
-            
+
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
         # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
@@ -263,25 +275,11 @@ class Model(nn.Module):
     def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
         LOGGER.info('Fusing layers... ')
         for m in self.model.modules():
-            if type(m) is Conv and hasattr(m, 'bn'):
+            if isinstance(m, (Conv, DWConv)) and hasattr(m, 'bn'):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
-                m.forward = m.fuseforward  # update forward
+                m.forward = m.forward_fuse  # update forward
         self.info()
-        return self
-
-    def nms(self, mode=True):  # add or remove NMS module
-        present = type(self.model[-1]) is NMS  # last layer is NMS
-        if mode and not present:
-            LOGGER.info('Adding NMS... ')
-            m = NMS()  # module
-            m.f = -1  # from
-            m.i = self.model[-1].i + 1  # index
-            self.model.add_module(name='%s' % m.i, module=m)  # add
-            self.eval()
-        elif not mode and present:
-            LOGGER.info('Removing NMS... ')
-            self.model = self.model[:-1]  # remove
         return self
 
     def autoshape(self):  # add AutoShape module
@@ -292,7 +290,7 @@ class Model(nn.Module):
 
     def info(self, verbose=False, img_size=640):  # print model information
         model_info(self, verbose, img_size)
-        
+
     def _apply(self, fn):
         # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
         self = super()._apply(fn)
@@ -303,6 +301,7 @@ class Model(nn.Module):
             if isinstance(m.anchor_grid, list):
                 m.anchor_grid = list(map(fn, m.anchor_grid))
         return self
+
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info('\n%3s%18s%3s%10s  %-40s%-30s' % ('', 'from', 'n', 'params', 'module', 'arguments'))
@@ -316,12 +315,12 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         for j, a in enumerate(args):
             try:
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
-            except:
+            except NameError:
                 pass
 
-        n = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,
-                 CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost,CARAFE]:
+        n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
+        if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,
+                 CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE]:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -361,6 +360,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         if i == 0:
             ch = []
         ch.append(c2)
+    print('parse model success')
     return nn.Sequential(*layers), sorted(save)
 
 
@@ -371,6 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--profile', action='store_true', help='profile model speed')
     opt = parser.parse_args()
     opt.cfg = check_yaml(opt.cfg)  # check YAML
+    print_args(FILE.stem, opt)
     set_logging()
     device = select_device(opt.device)
 
@@ -388,4 +389,3 @@ if __name__ == '__main__':
     # tb_writer = SummaryWriter('.')
     # LOGGER.info("Run 'tensorboard --logdir=models' to view tensorboard at http://localhost:6006/")
     # tb_writer.add_graph(torch.jit.trace(model, img, strict=False), [])  # add model graph
-    # tb_writer.add_image('test', img[0], dataformats='CWH')  # add model to tensorboard
