@@ -20,6 +20,7 @@
 
 ***
 最近更新：
+- 2021/11.3  合并最新的YOLOV5的改动， 替换了CSPBOTTLENNECK的LeakRELUw为SLIU，其余全是代码和工程规范修改
 - 2021.10.25  修复BUG
 - 2021.10.13 更新合并YOLOV5v6.0版本，第一时间的更新解析可参考[CSND博客](https://blog.csdn.net/weixin_44119362/article/details/120748319?spm=1001.2014.3001.5501)
 - 2021.9.25  将自注意力位置编码设置成可选项，默认取消
