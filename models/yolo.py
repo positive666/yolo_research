@@ -74,7 +74,7 @@ class Detect(nn.Module):
         return x if self.training else (torch.cat(z, 1), x)
 
   
-    def _make_grid(nx=20, ny=20):
+    def _make_grid(nx=20, ny=20,i=0):
         d = self.anchors[i].device
         if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
             yv, xv = torch.meshgrid([torch.arange(ny).to(d), torch.arange(nx).to(d)], indexing='ij')
