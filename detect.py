@@ -190,7 +190,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
             seen += 1
             if webcam:  # batch_size >= 1
                p, im0, frame = path[i], im0s[i].copy(), dataset.count
-               s += f'{i}: 
+               s += f'{i}:'
             else:
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
