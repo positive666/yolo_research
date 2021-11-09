@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -23,10 +24,11 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.experimental import attempt_load
-from utils.datasets import LoadImages, LoadStreams
-from utils.general import apply_classifier, check_img_size, check_imshow, check_requirements, check_suffix, colorstr, \
-    increment_path, non_max_suppression, print_args, save_one_box, scale_coords, strip_optimizer, xyxy2xywh, LOGGER
-from utils.plots import Annotator, colors
+from utils.datasets import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
+from utils.general import (LOGGER, apply_classifier, check_file, check_img_size, check_imshow, check_requirements,
+                           check_suffix, colorstr, increment_path, non_max_suppression, print_args, scale_coords,
+                           strip_optimizer, xyxy2xywh)
+from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import load_classifier, select_device, time_sync
 
 
@@ -87,14 +89,14 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
             modelc.load_state_dict(torch.load('resnet50.pt', map_location=device)['model']).to(device).eval()
     elif onnx:
         if dnn:
-            # check_requirements(('opencv-python>=4.5.4',))
+            check_requirements(('opencv-python>=4.5.4',))
             net = cv2.dnn.readNetFromONNX(w)
         else:
             check_requirements(('onnx', 'onnxruntime-gpu' if torch.has_cuda else 'onnxruntime'))
             import onnxruntime
             session = onnxruntime.InferenceSession(w, None)
     else:  # TensorFlow models
-        check_requirements(('tensorflow>=2.4.1',))
+        #check_requirements(('tensorflow>=2.4.1',))
         import tensorflow as tf
         if pb:  # https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
             def wrap_frozen_graph(gd, inputs, outputs):
@@ -108,7 +110,14 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         elif saved_model:
             model = tf.keras.models.load_model(w)
         elif tflite:
-            interpreter = tf.lite.Interpreter(model_path=w)  # load TFLite model
+            if "edgetpu" in w:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
+                import tflite_runtime.interpreter as tflri
+                delegate = {'Linux': 'libedgetpu.so.1',  # install libedgetpu https://coral.ai/software/#edgetpu-runtime
+                            'Darwin': 'libedgetpu.1.dylib',
+                            'Windows': 'edgetpu.dll'}[platform.system()]
+                interpreter = tflri.Interpreter(model_path=w, experimental_delegates=[tflri.load_delegate(delegate)])
+            else:
+                interpreter = tf.lite.Interpreter(model_path=w)  # load TFLite model
             interpreter.allocate_tensors()  # allocate
             input_details = interpreter.get_input_details()  # inputs
             output_details = interpreter.get_output_details()  # outputs
@@ -137,7 +146,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         else:
             img = torch.from_numpy(img).to(device)
             img = img.half() if half else img.float()  # uint8 to fp16/32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        img /= 255  # 0 - 255 to 0.0 - 1.0
         if len(img.shape) == 3:
             img = img[None]  # expand for batch dim
         t2 = time_sync()

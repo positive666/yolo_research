@@ -45,7 +45,7 @@ ROOT = FILE.parents[1]  # YOLOv5 root directory
 def set_logging(name=None, verbose=True):
     # Sets level and returns logger
     rank = int(os.getenv('RANK', -1))  # rank in world for Multi-GPU trainings
-    logging.basicConfig(format="%(message)s", level=logging.INFO if (verbose and rank in (-1, 0)) else logging.WARN)
+    logging.basicConfig(format="%(message)s", level=logging.INFO if (verbose and rank in (-1, 0)) else logging.WARNING)
     return logging.getLogger(name)
 
 
@@ -125,6 +125,11 @@ def init_seeds(seed=0):
     cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False)
 
 
+def intersect_dicts(da, db, exclude=()):
+    # Dictionary intersection of matching keys and shapes, omitting 'exclude' keys, using da values
+    return {k: v for k, v in da.items() if k in db and not any(x in k for x in exclude) and v.shape == db[k].shape}
+    
+    
 def get_latest_run(search_dir='.'):
     # Return path to most recent 'last.pt' in /runs (i.e. to --resume from)
     last_list = glob.glob(f'{search_dir}/**/last*.pt', recursive=True)
@@ -338,9 +343,12 @@ def check_file(file, suffix=''):
     elif file.startswith(('http:/', 'https:/')):  # download
         url = str(Path(file)).replace(':/', '://')  # Pathlib turns :// -> :/
         file = Path(urllib.parse.unquote(file).split('?')[0]).name  # '%2F' to '/', split https://url.com/file.txt?auth
-        print(f'Downloading {url} to {file}...')
-        torch.hub.download_url_to_file(url, file)
-        assert Path(file).exists() and Path(file).stat().st_size > 0, f'File download failed: {url}'  # check
+        if Path(file).is_file():
+            print(f'Found {url} locally at {file}')  # file already exists
+        else:
+            print(f'Downloading {url} to {file}...')
+            torch.hub.download_url_to_file(url, file)
+            assert Path(file).exists() and Path(file).stat().st_size > 0, f'File download failed: {url}'  # check
         return file
     else:  # search
         files = []
@@ -809,21 +817,6 @@ def apply_classifier(x, model, img, im0):
             x[i] = x[i][pred_cls1 == pred_cls2]  # retain matching class detections
 
     return x
-
-
-def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=10, square=False, BGR=False, save=True):
-    # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
-    xyxy = torch.tensor(xyxy).view(-1, 4)
-    b = xyxy2xywh(xyxy)  # boxes
-    if square:
-        b[:, 2:] = b[:, 2:].max(1)[0].unsqueeze(1)  # attempt rectangle to square
-    b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
-    xyxy = xywh2xyxy(b).long()
-    clip_coords(xyxy, im.shape)
-    crop = im[int(xyxy[0, 1]):int(xyxy[0, 3]), int(xyxy[0, 0]):int(xyxy[0, 2]), ::(1 if BGR else -1)]
-    if save:
-        cv2.imwrite(str(increment_path(file, mkdir=True).with_suffix('.jpg')), crop)
-    return crop
 
 
 def increment_path(path, exist_ok=False, sep='', mkdir=False):
