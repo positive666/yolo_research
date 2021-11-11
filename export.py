@@ -22,6 +22,7 @@ TensorFlow.js:
 
 import argparse
 import os
+import json
 import subprocess
 import sys
 import time
@@ -54,7 +55,9 @@ def export_torchscript(model, im, file, optimize, prefix=colorstr('TorchScript:'
         f = file.with_suffix('.torchscript.pt')
 
         ts = torch.jit.trace(model, im, strict=False)
-        (optimize_for_mobile(ts) if optimize else ts).save(f)
+        d = {"shape": im.shape, "stride": int(max(model.stride)), "names": model.names}
+        extra_files = {'config.txt': json.dumps(d)}  # torch._C.ExtraFilesMap()
+        (optimize_for_mobile(ts) if optimize else ts).save(f, _extra_files=extra_files)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
     except Exception as e:
