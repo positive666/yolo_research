@@ -5,7 +5,6 @@ Usage:
 """
 
 import argparse
-import logging
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -18,10 +17,9 @@ if str(ROOT) not in sys.path:
 from models.common import *
 from models.experimental import *
 from utils.autoanchor import check_anchor_order
-from utils.general import check_version, check_yaml, make_divisible, print_args, LOGGER
+from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
 from utils.plots import feature_visualization
-from utils.torch_utils import copy_attr, fuse_conv_and_bn, initialize_weights, model_info, scale_img, \
-    select_device, time_sync
+from utils.torch_utils import fuse_conv_and_bn, initialize_weights, model_info, scale_img, select_device, time_sync
 
 try:
     import thop  # for FLOPs computation
@@ -287,12 +285,6 @@ class Model(nn.Module):
                 m.forward = m.forward_fuse  # update forward
         self.info()
         return self
-
-    def autoshape(self):  # add AutoShape module
-        LOGGER.info('Adding AutoShape... ')
-        m = AutoShape(self)  # wrap model
-        copy_attr(m, self, include=('yaml', 'nc', 'hyp', 'names', 'stride'), exclude=())  # copy attributes
-        return m
 
     def info(self, verbose=False, img_size=640):  # print model information
         model_info(self, verbose, img_size)

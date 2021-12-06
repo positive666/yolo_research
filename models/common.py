@@ -24,7 +24,8 @@ from utils.datasets import exif_transpose, letterbox
 from utils.general import (LOGGER, check_requirements, check_suffix, colorstr, increment_path, make_divisible,
                            non_max_suppression, scale_coords, xywh2xyxy, xyxy2xywh)
 from utils.plots import Annotator, colors,save_one_box
-from utils.torch_utils import time_sync
+from utils.torch_utils import copy_attr, time_sync
+
 
 
 def autopad(k, p=None):  # kernel, padding
@@ -35,24 +36,28 @@ def autopad(k, p=None):  # kernel, padding
 
 class DetectMultiBackend(nn.Module):
     # YOLOv5 MultiBackend class for python inference on various backends
-    def __init__(self, weights='yolov5s.pt', device=None, dnn=True):
+    def __init__(self, weights='yolov5s.pt', device=None, dnn=False):
         # Usage:
         #   PyTorch:      weights = *.pt
-        #   TorchScript:            *.torchscript.pt
+        #   TorchScript:            *.torchscript
         #   CoreML:                 *.mlmodel
         #   TensorFlow:             *_saved_model
         #   TensorFlow:             *.pb
         #   TensorFlow Lite:        *.tflite
         #   ONNX Runtime:           *.onnx
         #   OpenCV DNN:             *.onnx with dnn=True
+        #   TensorRT:               *.engine
+        from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
+          
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        suffix, suffixes = Path(w).suffix.lower(), ['.pt', '.onnx', '.tflite', '.pb', '', '.mlmodel']
+        suffix = Path(w).suffix.lower()
+        suffixes = ['.pt', '.torchscript', '.onnx','.engine', '.tflite', '.pb', '', '.mlmodel']
         check_suffix(w, suffixes)  # check weights have acceptable suffix
-        pt, onnx, tflite, pb, saved_model, coreml = (suffix == x for x in suffixes)  # backend booleans
-        jit = pt and 'torchscript' in w.lower()
+        pt, jit, onnx, engine, tflite, pb, saved_model, coreml = (suffix == x for x in suffixes)  # backend booleans
         stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
-
+        attempt_download(w)  # download if not local
+        
         if jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
@@ -61,11 +66,12 @@ class DetectMultiBackend(nn.Module):
                 d = json.loads(extra_files['config.txt'])  # extra_files dict
                 stride, names = int(d['stride']), d['names']
         elif pt:  # PyTorch
-            from models.experimental import attempt_load  # scoped to avoid circular import
-            model = torch.jit.load(w) if 'torchscript' in w else attempt_load(weights, map_location=device)
+            model = attempt_load(weights, map_location=device)
             stride = int(model.stride.max())  # model stride
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
-        elif coreml:  # CoreML *.mlmodel
+            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+        elif coreml:  # CoreML 
+            LOGGER.info(f'Loading {w} for CoreML inference...')
             import coremltools as ct
             model = ct.models.MLModel(w)
         elif dnn:  # ONNX OpenCV DNN
@@ -74,23 +80,44 @@ class DetectMultiBackend(nn.Module):
             net = cv2.dnn.readNetFromONNX(w)
         elif onnx:  # ONNX Runtime
             LOGGER.info(f'Loading {w} for ONNX Runtime inference...')
-            check_requirements(('onnx', 'onnxruntime-gpu' if torch.has_cuda else 'onnxruntime'))
+            check_requirements(('onnx', 'onnxruntime-gpu' if torch.cuda.is_available() else 'onnxruntime'))
             import onnxruntime
             session = onnxruntime.InferenceSession(w, None)
+        elif engine:  # TensorRT    
+            LOGGER.info(f'Loading {w} for TensorRT inference...')
+            import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
+            Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
+            logger = trt.Logger(trt.Logger.INFO)
+            with open(w, 'rb') as f, trt.Runtime(logger) as runtime:
+                model = runtime.deserialize_cuda_engine(f.read())
+            bindings = OrderedDict()
+            for index in range(model.num_bindings):
+                name = model.get_binding_name(index)
+                dtype = trt.nptype(model.get_binding_dtype(index))
+                shape = tuple(model.get_binding_shape(index))
+                data = torch.from_numpy(np.empty(shape, dtype=np.dtype(dtype))).to(device)
+                bindings[name] = Binding(name, dtype, shape, data, int(data.data_ptr()))
+            binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
+            context = model.create_execution_context()
+            batch_size = bindings['images'].shape[0]
         else:  # TensorFlow model (TFLite, pb, saved_model)
-            import tensorflow as tf
             if pb:  # https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
+                LOGGER.info(f'Loading {w} for TensorFlow *.pb inference...')
+                import tensorflow as tf
+    
+       
                 def wrap_frozen_graph(gd, inputs, outputs):
                     x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=""), [])  # wrapped
                     return x.prune(tf.nest.map_structure(x.graph.as_graph_element, inputs),
                                    tf.nest.map_structure(x.graph.as_graph_element, outputs))
 
-                LOGGER.info(f'Loading {w} for TensorFlow *.pb inference...')
+         
                 graph_def = tf.Graph().as_graph_def()
                 graph_def.ParseFromString(open(w, 'rb').read())
                 frozen_func = wrap_frozen_graph(gd=graph_def, inputs="x:0", outputs="Identity:0")
             elif saved_model:
                 LOGGER.info(f'Loading {w} for TensorFlow saved_model inference...')
+                import tensorflow as tf
                 model = tf.keras.models.load_model(w)
             elif tflite:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
                 if 'edgetpu' in w.lower():
@@ -102,6 +129,7 @@ class DetectMultiBackend(nn.Module):
                     interpreter = tfli.Interpreter(model_path=w, experimental_delegates=[tfli.load_delegate(delegate)])
                 else:
                     LOGGER.info(f'Loading {w} for TensorFlow Lite inference...')
+                    import tensorflow as tf
                     interpreter = tf.lite.Interpreter(model_path=w)  # load TFLite model
                 interpreter.allocate_tensors()  # allocate
                 input_details = interpreter.get_input_details()  # inputs
@@ -114,7 +142,7 @@ class DetectMultiBackend(nn.Module):
         if self.pt:  # PyTorch
             y = self.model(im) if self.jit else self.model(im, augment=augment, visualize=visualize)
             return y if val else y[0]
-        elif self.coreml:  # CoreML *.mlmodel
+        elif self.coreml:  # CoreML
             im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             im = Image.fromarray((im[0] * 255).astype('uint8'))
             # im = im.resize((192, 320), Image.ANTIALIAS)
@@ -129,6 +157,11 @@ class DetectMultiBackend(nn.Module):
                 y = self.net.forward()
             else:  # ONNX Runtime
                 y = self.session.run([self.session.get_outputs()[0].name], {self.session.get_inputs()[0].name: im})[0]
+        elif self.engine:  # TensorRT
+            assert im.shape == self.bindings['images'].shape, (im.shape, self.bindings['images'].shape)
+            self.binding_addrs['images'] = int(im.data_ptr())
+            self.context.execute_v2(list(self.binding_addrs.values()))
+            y = self.bindings['output'].data        
         else:  # TensorFlow model (TFLite, pb, saved_model)
             im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             if self.pb:
@@ -154,6 +187,12 @@ class DetectMultiBackend(nn.Module):
         y = torch.tensor(y)
         return (y, []) if val else y
         
+    def warmup(self, imgsz=(1, 3, 640, 640), half=False):
+        # Warmup model by running inference once
+        if self.pt or self.engine or self.onnx:  # warmup types
+            if isinstance(self.device, torch.device) and self.device.type != 'cpu':  # only warmup GPU models
+                im = torch.zeros(*imgsz).to(self.device).type(torch.half if half else torch.float)  # input image
+                self.forward(im)  # warmup
         
 
 class Conv(nn.Module):
@@ -530,26 +569,29 @@ class AutoShape(nn.Module):
     # input-robust model wrapper for passing cv2/np/PIL/torch inputs. Includes preprocessing, inference and NMS
     conf = 0.25  # NMS confidence threshold
     iou = 0.45  # NMS IoU threshold
-    classes = None  # (optional list) filter by class
+    agnostic = False  # NMS class-agnostic
     multi_label = False  # NMS multiple labels per box
+    classes = None  # (optional list) filter by class, i.e. = [0, 15, 16] for COCO persons, cats and dogs
     max_det = 1000  # maximum number of detections per image
     
     def __init__(self, model):
-        super(AutoShape, self).__init__()
+        super().__init__()
+        LOGGER.info('Adding AutoShape... ')
+        copy_attr(self, model, include=('yaml', 'nc', 'hyp', 'names', 'stride', 'abc'), exclude=())  # copy attributes
+        self.dmb = isinstance(model, DetectMultiBackend)  # DetectMultiBackend() instance
+        self.pt = not self.dmb or model.pt  # PyTorch model
         self.model = model.eval()
 
-    def autoshape(self):
-        print('AutoShape already enabled, skipping... ')  # model already converted to model.autoshape()
-        return self
 
     def _apply(self, fn):
             # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
             self = super()._apply(fn)
-            m = self.model.model[-1]  # Detect()
-            m.stride = fn(m.stride)
-            m.grid = list(map(fn, m.grid))
-            if isinstance(m.anchor_grid, list):
-                m.anchor_grid = list(map(fn, m.anchor_grid))
+            if self.pt:
+                m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
+                m.stride = fn(m.stride)
+                m.grid = list(map(fn, m.grid))
+                if isinstance(m.anchor_grid, list):
+                    m.anchor_grid = list(map(fn, m.anchor_grid))
             return self
 
     @torch.no_grad()
@@ -564,7 +606,7 @@ class AutoShape(nn.Module):
         #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
 
         t = [time_sync()]
-        p = next(self.model.parameters())  # for device and type
+        p = next(self.model.parameters()) if self.pt else torch.zeros(1)  # for device and type
         if isinstance(imgs, torch.Tensor):  # torch
             with amp.autocast(enabled=p.device.type != 'cpu'):
                 return self.model(imgs.to(p.device).type_as(p), augment, profile)  # inference
@@ -587,8 +629,8 @@ class AutoShape(nn.Module):
             g = (size / max(s))  # gain
             shape1.append([y * g for y in s])
             imgs[i] = im if im.data.contiguous else np.ascontiguousarray(im)  # update
-        shape1 = [make_divisible(x, int(self.stride.max())) for x in np.stack(shape1, 0).max(0)]  # inference shape
-        x = [letterbox(im, new_shape=shape1, auto=False)[0] for im in imgs]  # pad
+        shape1 = [make_divisible(x, self.stride) for x in np.stack(shape1, 0).max(0)]  # inference shape
+        x = [letterbox(im, new_shape=shape1 if self.pt else size, auto=False)[0] for im in imgs]  # pad
         x = np.stack(x, 0) if n > 1 else x[0][None]  # stack
         x = np.ascontiguousarray(x.transpose((0, 3, 1, 2)))  # BHWC to BCHW
         x = torch.from_numpy(x).to(p.device).type_as(p) / 255.  # uint8 to fp16/32
@@ -596,12 +638,12 @@ class AutoShape(nn.Module):
 
         with amp.autocast(enabled=p.device.type != 'cpu'):
             # Inference
-            y = self.model(x, augment, profile)[0]  # forward
+            y = self.model(x, augment, profile)  # forward
             t.append(time_sync())
 
             # Post-process
-            y = non_max_suppression(y, self.conf, iou_thres=self.iou, classes=self.classes,
-                                    multi_label=self.multi_label, max_det=self.max_det)  # NMS
+            y = non_max_suppression(y if self.dmb else y[0], self.conf, iou_thres=self.iou, classes=self.classes,
+                                    agnostic=self.agnostic, multi_label=self.multi_label, max_det=self.max_det)  # NMS
             for i in range(n):
                 scale_coords(shape1, y[i][:, :4], shape0[i])
 
@@ -612,13 +654,12 @@ class AutoShape(nn.Module):
 class Detections:
     # detections class for YOLOv5 inference results
     def __init__(self, imgs, pred, files, times=None, names=None, shape=None):
-        super(Detections, self).__init__()
+        super().__init__()
         d = pred[0].device  # device
         gn = [torch.tensor([*[im.shape[i] for i in [1, 0, 1, 0]], 1., 1.], device=d) for im in imgs]  # normalizations
         self.imgs = imgs  # list of images as numpy arrays
         self.pred = pred  # list of tensors pred[0] = (xyxy, conf, cls)
         self.names = names  # class names
-        self.ascii = is_ascii(names)  # names are ascii (use PIL for UTF-8)
         self.files = files  # image filenames
         self.xyxy = pred  # xyxy pixels
         self.xywh = [xyxy2xywh(x) for x in pred]  # xywh pixels
@@ -629,6 +670,7 @@ class Detections:
         self.s = shape  # inference BCHW shape
 
     def display(self, pprint=False, show=False, save=False, crop=False, render=False, save_dir=Path('')):
+        crops = []
         for i, (im, pred) in enumerate(zip(self.imgs, self.pred)):
             str = f'image {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '
             if pred is not None:
@@ -640,7 +682,9 @@ class Detections:
                     for *box, conf, cls in reversed(pred):  # xyxy, confidence, class
                         label = f'{self.names[int(cls)]} {conf:.2f}'
                         if crop:
-                            save_one_box(box, im, file=save_dir / 'crops' / self.names[int(cls)] / self.files[i])
+                            file = save_dir / 'crops' / self.names[int(cls)] / self.files[i] if save else None
+                            crops.append({'box': box, 'conf': conf, 'cls': cls, 'label': label,
+                                          'im': save_one_box(box, im, file=file, save=save)})
                         else:  # all others
                             annotator.box_label(box, label, color=colors(cls))
                         im = annotator.im    
@@ -659,6 +703,10 @@ class Detections:
                     LOGGER.info(f"Saved {self.n} image{'s' * (self.n > 1)} to {colorstr('bold', save_dir)}")
             if render:
                 self.imgs[i] = np.asarray(im)
+        if crop:
+            if save:
+                LOGGER.info(f'Saved results to {save_dir}\n')
+            return crops
 
     def print(self):
         self.display(pprint=True)  # print results
@@ -673,8 +721,7 @@ class Detections:
         self.display(save=True, save_dir=save_dir)  # save results
 
     def crop(self, save_dir='runs/detect/exp'):
-        save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True)  # increment save_dir
-        self.display(crop=True, save_dir=save_dir)  # crop results
+        save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True) if save else None
         LOGGER.info(f'Saved results to {save_dir}\n')
 
     def render(self):
