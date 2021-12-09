@@ -18,7 +18,7 @@ def fitness(x):
     return (x[:, :4] * w).sum(1)
 
 
-def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=()):
+def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=(), eps=1e-16):
     """ Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     # Arguments
