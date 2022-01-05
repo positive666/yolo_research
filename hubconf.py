@@ -29,9 +29,9 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
     from pathlib import Path
 
     from models.common import AutoShape, DetectMultiBackend
-    from models.experimental import attempt_load
-    from utils.general import check_requirements, set_logging
+    from models.yolo import Model
     from utils.downloads import attempt_download
+    from utils.general import check_requirements, intersect_dicts, set_logging
     from utils.torch_utils import select_device
 
     check_requirements(exclude=('tensorboard', 'thop', 'opencv-python'))
@@ -44,9 +44,9 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
 
         if pretrained and channels == 3 and classes == 80:
             model = DetectMultiBackend(path, device=device)  # download/load FP32 model
-               # model = models.experimental.attempt_load(path, map_location=device)  # download/load FP32 model
+            # model = models.experimental.attempt_load(path, map_location=device)  # download/load FP32 model
         else:
-            cfg = list((Path(__file__).parent / 'models').rglob(f'{path.name}.yaml'))[0]  # model.yaml path
+            cfg = list((Path(__file__).parent / 'models').rglob(f'{path.stem}.yaml'))[0]  # model.yaml path
             model = Model(cfg, channels, classes)  # create model
             if pretrained:
                 ckpt = torch.load(attempt_download(path), map_location=device)  # load
@@ -56,7 +56,7 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
                 if len(ckpt['model'].names) == classes:
                     model.names = ckpt['model'].names  # set class names attribute
         if autoshape:
-            model = AutoShape(model)   # for file/URI/PIL/cv2/np inputs and NMS
+            model = AutoShape(model)  # for file/URI/PIL/cv2/np inputs and NMS
         return model.to(device)
 
     except Exception as e:
@@ -125,10 +125,11 @@ if __name__ == '__main__':
     # model = custom(path='path/to/model.pt')  # custom
 
     # Verify inference
+    from pathlib import Path
+
     import cv2
     import numpy as np
     from PIL import Image
-    from pathlib import Path
 
     imgs = ['data/images/zidane.jpg',  # filename
             Path('data/images/zidane.jpg'),  # Path
@@ -137,6 +138,6 @@ if __name__ == '__main__':
             Image.open('data/images/bus.jpg'),  # PIL
             np.zeros((320, 640, 3))]  # numpy
 
-    results = model(imgs)  # batched inference
+    results = model(imgs, size=320)  # batched inference
     results.print()
     results.save()
