@@ -41,6 +41,7 @@ TensorFlow.js:
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 import time
@@ -81,6 +82,7 @@ def export_torchscript(model, im, file, optimize, prefix=colorstr('TorchScript:'
             ts.save(str(f), _extra_files=extra_files)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return f
     except Exception as e:
         LOGGER.info(f'{prefix} export failure: {e}')
 
@@ -124,7 +126,7 @@ def export_onnx(model, im, file, opset, train, dynamic, simplify, prefix=colorst
             except Exception as e:
                 LOGGER.info(f'{prefix} simplifier failure: {e}')
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
-        LOGGER.info(f"{prefix} run --dynamic ONNX model inference with: 'python detect.py --weights {f}'")
+        return f
     except Exception as e:
         LOGGER.info(f'{prefix} export failure: {e}')
 
@@ -142,13 +144,13 @@ def export_openvino(model, im, file, prefix=colorstr('OpenVINO:')):
         subprocess.check_output(cmd, shell=True)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
 
 
 def export_coreml(model, im, file, prefix=colorstr('CoreML:')):
     # YOLOv5 CoreML export
-    ct_model = None
     try:
         check_requirements(('coremltools',))
         import coremltools as ct
@@ -161,11 +163,11 @@ def export_coreml(model, im, file, prefix=colorstr('CoreML:')):
         ct_model.save(f)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return ct_model, f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
-
-    return ct_model
-
+        return None, None
+   
 
 def export_engine(model, im, file, train, half, simplify, workspace=4, verbose=False, prefix=colorstr('TensorRT:')):
     # YOLOv5 TensorRT export https://developer.nvidia.com/tensorrt
@@ -215,7 +217,7 @@ def export_engine(model, im, file, train, half, simplify, workspace=4, verbose=F
         with builder.build_engine(network, config) as engine, open(f, 'wb') as t:
             t.write(engine.serialize())
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
-
+        return f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
 
@@ -224,7 +226,6 @@ def export_saved_model(model, im, file, dynamic,
                        tf_nms=False, agnostic_nms=False, topk_per_class=100, topk_all=100, iou_thres=0.45,
                        conf_thres=0.25, prefix=colorstr('TensorFlow SavedModel:')):
     # YOLOv5 TensorFlow SavedModel export
-    keras_model = None
     try:
         import tensorflow as tf
         from tensorflow import keras
@@ -246,10 +247,10 @@ def export_saved_model(model, im, file, dynamic,
         keras_model.save(f, save_format='tf')
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return keras_model, f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
-
-    return keras_model
+        return None, None
 
 
 def export_pb(keras_model, im, file, prefix=colorstr('TensorFlow GraphDef:')):
@@ -268,6 +269,7 @@ def export_pb(keras_model, im, file, prefix=colorstr('TensorFlow GraphDef:')):
         tf.io.write_graph(graph_or_graph_def=frozen_func.graph, logdir=str(f.parent), name=f.name, as_text=False)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
 
@@ -276,8 +278,6 @@ def export_tflite(keras_model, im, file, int8, data, ncalib, prefix=colorstr('Te
     # YOLOv5 TensorFlow Lite export
     try:
         import tensorflow as tf
-
-        from models.tf import representative_dataset_gen
 
         LOGGER.info(f'\n{prefix} starting export with tensorflow {tf.__version__}...')
         batch_size, ch, *imgsz = list(im.shape)  # BCHW
@@ -288,6 +288,7 @@ def export_tflite(keras_model, im, file, int8, data, ncalib, prefix=colorstr('Te
         converter.target_spec.supported_types = [tf.float16]
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
         if int8:
+            from models.tf import representative_dataset_gen
             dataset = LoadImages(check_dataset(data)['train'], img_size=imgsz, auto=False)  # representative data
             converter.representative_dataset = lambda: representative_dataset_gen(dataset, ncalib)
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
@@ -300,7 +301,7 @@ def export_tflite(keras_model, im, file, int8, data, ncalib, prefix=colorstr('Te
         tflite_model = converter.convert()
         open(f, "wb").write(tflite_model)
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
-
+        return f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
 
@@ -328,6 +329,7 @@ def export_edgetpu(keras_model, im, file, prefix=colorstr('Edge TPU:')):
         subprocess.run(cmd, shell=True, check=True)
         
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return f  
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
         
@@ -364,6 +366,7 @@ def export_tfjs(keras_model, im, file, prefix=colorstr('TensorFlow.js:')):
             j.write(subst)
 
         LOGGER.info(f'{prefix} export success, saved as {f} ({file_size(f):.1f} MB)')
+        return f
     except Exception as e:
         LOGGER.info(f'\n{prefix} export failure: {e}')
 
@@ -431,36 +434,42 @@ def run(data=ROOT / 'data/coco128.yaml',  # 'dataset.yaml path'
 
     # Exports
     if 'torchscript' in include:
-        export_torchscript(model, im, file, optimize)
+        f = export_torchscript(model, im, file, optimize)
     if 'engine' in include:  # TensorRT required before ONNX
-        export_engine(model, im, file, train, half, simplify, workspace, verbose)
+        f = export_engine(model, im, file, train, half, simplify, workspace, verbose)
     if ('onnx' in include) or ('openvino' in include):  # OpenVINO requires ONNX
-        export_onnx(model, im, file, opset, train, dynamic, simplify)
+        f = export_onnx(model, im, file, opset, train, dynamic, simplify)
     if 'openvino' in include:
-        export_openvino(model, im, file)
+        f = export_openvino(model, im, file)
     if 'coreml' in include:
-        export_coreml(model, im, file)
+        _, f = export_coreml(model, im, file)
 
     # TensorFlow Exports
     if any(tf_exports):
         pb, tflite, edgetpu, tfjs = tf_exports[1:]
+        if int8 or edgetpu:  # TFLite --int8 bug https://github.com/ultralytics/yolov5/issues/5707
+            check_requirements(('flatbuffers==1.12',))  # required before `import tensorflow`
         assert not (tflite and tfjs), 'TFLite and TF.js models must be exported separately, please pass only one type.'
-        model = export_saved_model(model, im, file, dynamic, tf_nms=nms or agnostic_nms or tfjs,
-                                   agnostic_nms=agnostic_nms or tfjs, topk_per_class=topk_per_class, topk_all=topk_all,
-                                   conf_thres=conf_thres, iou_thres=iou_thres)  # keras model
-        if pb or tfjs:  # pb prerequisite to tfjs
-            export_pb(model, im, file)
+        model, f = export_saved_model(model, im, file, dynamic, tf_nms=nms or agnostic_nms or tfjs,
+                                      agnostic_nms=agnostic_nms or tfjs, topk_per_class=topk_per_class,
+                                      topk_all=topk_all,
+                                      conf_thres=conf_thres, iou_thres=iou_thres)  # keras model
+       if pb or tfjs:  # pb prerequisite to tfjs
+            f = export_pb(model, im, file)
         if tflite or edgetpu:
-            export_tflite(model, im, file, int8=int8 or edgetpu, data=data, ncalib=100)
+            f = export_tflite(model, im, file, int8=int8 or edgetpu, data=data, ncalib=100)
         if edgetpu:
-            export_edgetpu(model, im, file)
+            f = export_edgetpu(model, im, file)
         if tfjs:
-            export_tfjs(model, im, file)
+            f = export_tfjs(model, im, file)
 
     # Finish
     LOGGER.info(f'\nExport complete ({time.time() - t:.2f}s)'
                 f"\nResults saved to {colorstr('bold', file.parent.resolve())}"
-                f'\nVisualize with https://netron.app')
+                f"\nVisualize with https://netron.app"
+                f"\nDetect with `python detect.py --weights {f}`"
+                f" or `model = torch.hub.load('ultralytics/yolov5', 'custom', '{f}')"
+                f"\nValidate with `python val.py --weights {f}`")
 
 
 def parse_opt():
@@ -488,7 +497,7 @@ def parse_opt():
     parser.add_argument('--conf-thres', type=float, default=0.25, help='TF.js NMS: confidence threshold')
     parser.add_argument('--include', nargs='+',
                         default=['torchscript', 'onnx'],
-                        help='available formats are (torchscript, onnx, engine, coreml, saved_model, pb, tflite, tfjs)')
+                        help='torchscript, onnx, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs')
     opt = parser.parse_args()
     print_args(FILE.stem, opt)
     return opt
