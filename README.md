@@ -3,7 +3,7 @@
 
    一切改动都基于YOLOV5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
    
-## C++ 级别的完整Deepstream部署（内置Kafuka服务），目前是5.0版本，近期更新6.0
+## C++ sdk的完整Deepstream5.1部署（内置libKafka服务），目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
   [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
 
 ***
