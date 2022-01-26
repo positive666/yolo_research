@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sn
-from copy import copy
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
@@ -58,7 +57,7 @@ def check_font(font='Arial.ttf', size=10):
         return ImageFont.truetype(str(font) if font.exists() else font.name, size)
     except Exception as e:  # download if missing
         url = "https://ultralytics.com/assets/" + font.name
-        print(f'Downloading {url} to {font}...')
+        LOGGER.info(f'Downloading {url} to {font}...')
         torch.hub.download_url_to_file(url, str(font), progress=False)
         try:
             return ImageFont.truetype(str(font), size)
@@ -133,7 +132,7 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
     if 'Detect' not in module_type:
         batch, channels, height, width = x.shape  # batch, channels, height, width
         if height > 1 and width > 1:
-            f = f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
+            f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
 
             blocks = torch.chunk(x[0].cpu(), channels, dim=0)  # select batch index 0, block by channels
             n = min(n, channels)  # number of plots
@@ -144,9 +143,10 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
                 ax[i].imshow(blocks[i].squeeze())  # cmap='gray'
                 ax[i].axis('off')
 
-            print(f'Saving {save_dir / f}... ({n}/{channels})')
-            plt.savefig(save_dir / f, dpi=300, bbox_inches='tight')
+            LOGGER.info(f'Saving {f}... ({n}/{channels})')
+            plt.savefig(f, dpi=300, bbox_inches='tight')
             plt.close()
+            np.save(str(f.with_suffix('.npy')), x[0].cpu().numpy())  # npy save
 
 
 def hist2d(x, y, n=100):
@@ -187,7 +187,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
     if isinstance(targets, torch.Tensor):
         targets = targets.cpu().numpy()
     if np.max(images[0]) <= 1:
-        images *= 255.0  # de-normalise (optional)
+        images *= 255  # de-normalise (optional)
     bs, _, h, w = images.shape  # batch size, _, height, width
     bs = min(bs, max_subplots)  # limit plot images
     ns = np.ceil(bs ** 0.5)  # number of subplots (square)
@@ -282,7 +282,7 @@ def plot_targets_txt():  # from utils.plots import *; plot_targets_txt()
     fig, ax = plt.subplots(2, 2, figsize=(8, 8), tight_layout=True)
     ax = ax.ravel()
     for i in range(4):
-        ax[i].hist(x[i], bins=100, label='%.3g +/- %.3g' % (x[i].mean(), x[i].std()))
+        ax[i].hist(x[i], bins=100, label=f'{x[i].mean():.3g} +/- {x[i].std():.3g}')
         ax[i].legend()
         ax[i].set_title(s[i])
     plt.savefig('targets.jpg', dpi=200)
@@ -387,7 +387,7 @@ def plot_evolve(evolve_csv='path/to/evolve.csv'):  # from utils.plots import *; 
         plt.subplot(6, 5, i + 1)
         plt.scatter(v, f, c=hist2d(v, f, 20), cmap='viridis', alpha=.8, edgecolors='none')
         plt.plot(mu, f.max(), 'k+', markersize=15)
-        plt.title('%s = %.3g' % (k, mu), fontdict={'size': 9})  # limit to 40 characters
+        plt.title(f'{k} = {mu:.3g}', fontdict={'size': 9})  # limit to 40 characters
         if i % 5 != 0:
             plt.yticks([])
         print(f'{k:>15}: {mu:.3g}')
@@ -417,7 +417,7 @@ def plot_results(file='path/to/results.csv', dir=''):
                 # if j in [8, 9, 10]:  # share train and val loss y axes
                 #     ax[i].get_shared_y_axes().join(ax[i], ax[i - 5])
         except Exception as e:
-            print(f'Warning: Plotting error for {f}: {e}')
+            LOGGER.info(f'Warning: Plotting error for {f}: {e}')
     ax[1].legend()
     fig.savefig(save_dir / 'results.png', dpi=200)
     plt.close()
@@ -452,8 +452,8 @@ def profile_idetection(start=0, stop=0, labels=(), save_dir=''):
             print(f'Warning: Plotting error for {f}; {e}')
     ax[1].legend()
     plt.savefig(Path(save_dir) / 'idetection_profile.png', dpi=200)
-    
-    
+
+
 def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=10, square=False, BGR=False, save=True):
     # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
     xyxy = torch.tensor(xyxy).view(-1, 4)

@@ -59,21 +59,24 @@ class DetectMultiBackend(nn.Module):
         pt, jit, onnx, engine, tflite, pb, saved_model, coreml,xml = (suffix == x for x in suffixes)  # backend booleans
         stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
         w = attempt_download(w)  # download if not local
-        if data:  # data.yaml path (optional)
-            with open(data, errors='ignore') as f:
-                names = yaml.safe_load(f)['names']  # class names
-        if pt:  # PyTorch
-            model = attempt_load(weights if isinstance(weights, list) else w, map_location=device)
-            stride = max(int(model.stride.max()), 32)  # model stride
-            names = model.module.names if hasattr(model, 'module') else model.names  # get class names
-            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
-        elif jit:  # TorchScript
+        
+        if jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
             model = torch.jit.load(w, _extra_files=extra_files)
             if extra_files['config.txt']:
                 d = json.loads(extra_files['config.txt'])  # extra_files dict
                 stride, names = int(d['stride']), d['names']
+        elif pt:  # PyTorch
+            model = attempt_load(weights, map_location=device)
+            model = attempt_load(weights if isinstance(weights, list) else w, map_location=device)
+            stride = int(model.stride.max())  # model stride
+            names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+        elif coreml:  # CoreML
+            LOGGER.info(f'Loading {w} for CoreML inference...')
+            import coremltools as ct
+            model = ct.models.MLModel(w)
         elif dnn:  # ONNX OpenCV DNN
             LOGGER.info(f'Loading {w} for ONNX OpenCV DNN inference...')
             check_requirements(('opencv-python>=4.5.4',))
@@ -85,17 +88,9 @@ class DetectMultiBackend(nn.Module):
             import onnxruntime
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
             session = onnxruntime.InferenceSession(w, providers=providers)
-        elif xml:  # OpenVINO
-            LOGGER.info(f'Loading {w} for OpenVINO inference...')
-            check_requirements(('openvino-dev',))  # requires openvino-dev: https://pypi.org/project/openvino-dev/
-            import openvino.inference_engine as ie
-            core = ie.IECore()
-            network = core.read_network(model=w, weights=Path(w).with_suffix('.bin'))  # *.xml, *.bin paths
-            executable_network = core.load_network(network, device_name='CPU', num_requests=1)
         elif engine:  # TensorRT
             LOGGER.info(f'Loading {w} for TensorRT inference...')
             import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
-            check_version(trt.__version__, '7.0.0', hard=True, verbose=True)  # version requirement
             Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
             logger = trt.Logger(trt.Logger.INFO)
             with open(w, 'rb') as f, trt.Runtime(logger) as runtime:
@@ -110,39 +105,35 @@ class DetectMultiBackend(nn.Module):
             binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
             context = model.create_execution_context()
             batch_size = bindings['images'].shape[0]
-        elif coreml:  # CoreML
-            LOGGER.info(f'Loading {w} for CoreML inference...')
-            import coremltools as ct
-            model = ct.models.MLModel(w)
-        else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
-            if saved_model:  # SavedModel
-                LOGGER.info(f'Loading {w} for TensorFlow SavedModel inference...')
+        else:  # TensorFlow model (TFLite, pb, saved_model)
+            if pb:  # https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
+                LOGGER.info(f'Loading {w} for TensorFlow *.pb inference...')
                 import tensorflow as tf
-                model = tf.keras.models.load_model(w)
-            elif pb:  # GraphDef https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
-                LOGGER.info(f'Loading {w} for TensorFlow GraphDef inference...')
-                import tensorflow as tf
-
                 def wrap_frozen_graph(gd, inputs, outputs):
                     x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=""), [])  # wrapped
                     return x.prune(tf.nest.map_structure(x.graph.as_graph_element, inputs),
                                    tf.nest.map_structure(x.graph.as_graph_element, outputs))
-
                 graph_def = tf.Graph().as_graph_def()
                 graph_def.ParseFromString(open(w, 'rb').read())
                 frozen_func = wrap_frozen_graph(gd=graph_def, inputs="x:0", outputs="Identity:0")
+            elif saved_model:
+                LOGGER.info(f'Loading {w} for TensorFlow saved_model inference...')
+                import tensorflow as tf
+                model = tf.keras.models.load_model(w)
             elif tflite:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
-                if 'edgetpu' in w.lower():  # Edge TPU
+                try:
+                    import tflite_runtime.interpreter as tfl  # prefer tflite_runtime if installed
+                except ImportError:
+                    import tensorflow.lite as tfl
+                if 'edgetpu' in w.lower():  # Edge TPU https://coral.ai/software/#edgetpu-runtime
                     LOGGER.info(f'Loading {w} for TensorFlow Lite Edge TPU inference...')
-                    import tflite_runtime.interpreter as tfli
                     delegate = {'Linux': 'libedgetpu.so.1',  # install https://coral.ai/software/#edgetpu-runtime
                                 'Darwin': 'libedgetpu.1.dylib',
                                 'Windows': 'edgetpu.dll'}[platform.system()]
-                    interpreter = tfli.Interpreter(model_path=w, experimental_delegates=[tfli.load_delegate(delegate)])
-                else:  # Lite
+                    interpreter = tfl.Interpreter(model_path=w, experimental_delegates=[tfl.load_delegate(delegate)])
+                else:# Lite
                     LOGGER.info(f'Loading {w} for TensorFlow Lite inference...')
-                    import tensorflow as tf
-                    interpreter = tf.lite.Interpreter(model_path=w)  # load TFLite model
+                    interpreter = tfl.Interpreter(model_path=w)  # load TFLite mode
                 interpreter.allocate_tensors()  # allocate
                 input_details = interpreter.get_input_details()  # inputs
                 output_details = interpreter.get_output_details()  # outputs
@@ -151,36 +142,46 @@ class DetectMultiBackend(nn.Module):
     def forward(self, im, augment=False, visualize=False, val=False):
         # YOLOv5 MultiBackend inference
         b, ch, h, w = im.shape  # batch, channel, height, width
-        if self.pt:  # PyTorch
+        if self.pt or self.jit:  # PyTorch
             y = self.model(im) if self.jit else self.model(im, augment=augment, visualize=visualize)
             return y if val else y[0]
+        elif self.dnn:  # ONNX OpenCV DNN
+            im = im.cpu().numpy()  # torch to numpy
+            self.net.setInput(im)
+            y = self.net.forward()
+        elif self.onnx:  # ONNX Runtime
+            im = im.cpu().numpy()  # torch to numpy
+            y = self.session.run([self.session.get_outputs()[0].name], {self.session.get_inputs()[0].name: im})[0]
+        elif self.xml:  # OpenVINO
+            im = im.cpu().numpy()  # FP32
+            desc = self.ie.TensorDesc(precision='FP32', dims=im.shape, layout='NCHW')  # Tensor Description
+            request = self.executable_network.requests[0]  # inference request
+            request.set_blob(blob_name='images', blob=self.ie.Blob(desc, im))  # name=next(iter(request.input_blobs))
+            request.infer()
+            y = request.output_blobs['output'].buffer  # name=next(iter(request.output_blobs))
+        elif self.engine:  # TensorRT
+            assert im.shape == self.bindings['images'].shape, (im.shape, self.bindings['images'].shape)
+            self.binding_addrs['images'] = int(im.data_ptr())
+            self.context.execute_v2(list(self.binding_addrs.values()))
+            y = self.bindings['output'].data
         elif self.coreml:  # CoreML
             im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             im = Image.fromarray((im[0] * 255).astype('uint8'))
             # im = im.resize((192, 320), Image.ANTIALIAS)
             y = self.model.predict({'image': im})  # coordinates are xywh normalized
-            box = xywh2xyxy(y['coordinates'] * [[w, h, w, h]])  # xyxy pixels
-            conf, cls = y['confidence'].max(1), y['confidence'].argmax(1).astype(np.float)
-            y = np.concatenate((box, conf.reshape(-1, 1), cls.reshape(-1, 1)), 1)
-        elif self.onnx:  # ONNX
-            im = im.cpu().numpy()  # torch to numpy
-            if self.dnn:  # ONNX OpenCV DNN
-                self.net.setInput(im)
-                y = self.net.forward()
-            else:  # ONNX Runtime
-                y = self.session.run([self.session.get_outputs()[0].name], {self.session.get_inputs()[0].name: im})[0]
-        elif self.engine:  # TensorRT
-            assert im.shape == self.bindings['images'].shape, (im.shape, self.bindings['images'].shape)
-            self.binding_addrs['images'] = int(im.data_ptr())
-            self.context.execute_v2(list(self.binding_addrs.values()))
-            y = self.bindings['output'].data        
-        else:  # TensorFlow model (TFLite, pb, saved_model)
+            if 'confidence' in y:
+                box = xywh2xyxy(y['coordinates'] * [[w, h, w, h]])  # xyxy pixels
+                conf, cls = y['confidence'].max(1), y['confidence'].argmax(1).astype(np.float)
+                y = np.concatenate((box, conf.reshape(-1, 1), cls.reshape(-1, 1)), 1)
+            else:
+                y = y[list(y)[-1]]  # last output
+        else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
             im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
-            if self.pb:
-                y = self.frozen_func(x=self.tf.constant(im)).numpy()
-            elif self.saved_model:
+            if self.saved_model:  # SavedModel
                 y = self.model(im, training=False).numpy()
-            elif self.tflite:
+            elif self.pb:  # GraphDef
+                y = self.frozen_func(x=self.tf.constant(im)).numpy()
+            elif self.tflite:  # Lite
                 input, output = self.input_details[0], self.output_details[0]
                 int8 = input['dtype'] == np.uint8  # is TFLite quantized uint8 model
                 if int8:
@@ -201,7 +202,7 @@ class DetectMultiBackend(nn.Module):
         
     def warmup(self, imgsz=(1, 3, 640, 640), half=False):
         # Warmup model by running inference once
-        if self.pt or self.engine or self.onnx:  # warmup types
+        if self.pt or self.jit or self.onnx or self.engine:  # warmup types
             if isinstance(self.device, torch.device) and self.device.type != 'cpu':  # only warmup GPU models
                 im = torch.zeros(*imgsz).to(self.device).type(torch.half if half else torch.float)  # input image
                 self.forward(im)  # warmup
@@ -619,8 +620,9 @@ class AutoShape(nn.Module):
 
         t = [time_sync()]
         p = next(self.model.parameters()) if self.pt else torch.zeros(1)  # for device and type
+        autocast = self.amp and (p.device.type != 'cpu')  # Automatic Mixed Precision (AMP) inference
         if isinstance(imgs, torch.Tensor):  # torch
-            with amp.autocast(enabled=p.device.type != 'cpu'):
+            with amp.autocast(enabled=autocast):
                 return self.model(imgs.to(p.device).type_as(p), augment, profile)  # inference
 
         # Pre-process

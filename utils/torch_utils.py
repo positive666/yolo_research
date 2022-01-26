@@ -19,11 +19,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils.general import LOGGER
+
 try:
     import thop  # for FLOPs computation
 except ImportError:
     thop = None
-
 
 
 @contextmanager
@@ -53,7 +53,7 @@ def git_describe(path=Path(__file__).parent):  # path must be a directory
         return ''  # not a git repository
 
 
-def select_device(device='', batch_size=None, newline=True):
+def select_device(device='', batch_size=0, newline=True):
     # device = 'cpu' or '0' or '0,1,2,3'
     s = f'YOLOv5 🚀 {git_describe() or date_modified()} torch {torch.__version__} '  # string
     device = str(device).strip().lower().replace('cuda:', '')  # to string, 'cuda:0' to '0'
@@ -61,20 +61,21 @@ def select_device(device='', batch_size=None, newline=True):
     if cpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # force torch.cuda.is_available() = False
     elif device:  # non-cpu device requested
-        assert torch.cuda.is_available(), 'CUDA unavailable'  # check CUDA is available
-        assert torch.cuda.device_count() > int(device), f'invalid CUDA device {device} requested'  # check index
+        nd = torch.cuda.device_count()  # number of CUDA devices
+        assert torch.cuda.is_available(), 'CUDA is not available, use `--device cpu` or do not pass a --device'
+        assert nd > int(max(device.split(','))), f'Invalid `--device {device}` request, valid devices are 0 - {nd - 1}'
         os.environ['CUDA_VISIBLE_DEVICES'] = device  # set environment variable (must be after asserts)
 
     cuda = not cpu and torch.cuda.is_available()
     if cuda:
         devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
         n = len(devices)  # device count
-        if n > 1 and batch_size:  # check batch_size is divisible by device_count
+        if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
             assert batch_size % n == 0, f'batch-size {batch_size} not multiple of GPU count {n}'
         space = ' ' * (len(s) + 1)
         for i, d in enumerate(devices):
             p = torch.cuda.get_device_properties(i)
-            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / 1024 ** 2}MB)\n"  # bytes to MB
+            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / 1024 ** 2:.0f}MiB)\n"  # bytes to MB
     else:
         s += 'CPU\n'
 
@@ -111,7 +112,7 @@ def profile(input, ops, n=10, device=None):
         for m in ops if isinstance(ops, list) else [ops]:
             m = m.to(device) if hasattr(m, 'to') else m  # device
             m = m.half() if hasattr(m, 'half') and isinstance(x, torch.Tensor) and x.dtype is torch.float16 else m
-            tf, tb, t = 0., 0., [0., 0., 0.]  # dt forward, backward
+            tf, tb, t = 0, 0, [0, 0, 0]  # dt forward, backward
             try:
                 flops = thop.profile(m, inputs=(x,), verbose=False)[0] / 1E9 * 2  # GFLOPs
             except:
@@ -123,10 +124,10 @@ def profile(input, ops, n=10, device=None):
                     y = m(x)
                     t[1] = time_sync()
                     try:
-                        _ = (sum([yi.sum() for yi in y]) if isinstance(y, list) else y).sum().backward()
+                        _ = (sum(yi.sum() for yi in y) if isinstance(y, list) else y).sum().backward()
                         t[2] = time_sync()
                     except Exception as e:  # no backward method
-                        print(e)
+                        # print(e)  # for debug
                         t[2] = float('nan')
                     tf += (t[1] - t[0]) * 1000 / n  # ms per op forward
                     tb += (t[2] - t[1]) * 1000 / n  # ms per op backward
@@ -161,7 +162,7 @@ def initialize_weights(model):
         elif t is nn.BatchNorm2d:
             m.eps = 1e-3
             m.momentum = 0.03
-        elif t in [nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6,nn.SiLU]:
+        elif t in [nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU]:
             m.inplace = True
 
 
@@ -172,7 +173,7 @@ def find_modules(model, mclass=nn.Conv2d):
 
 def sparsity(model):
     # Return global model sparsity
-    a, b = 0., 0.
+    a, b = 0, 0
     for p in model.parameters():
         a += p.numel()
         b += (p == 0).sum()
@@ -218,7 +219,7 @@ def model_info(model, verbose=False, img_size=640):
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
     n_g = sum(x.numel() for x in model.parameters() if x.requires_grad)  # number gradients
     if verbose:
-        print('%5s %40s %9s %12s %20s %10s %10s' % ('layer', 'name', 'gradient', 'parameters', 'shape', 'mu', 'sigma'))
+        print(f"{'layer':>5} {'name':>40} {'gradient':>9} {'parameters':>12} {'shape':>20} {'mu':>10} {'sigma':>10}")
         for i, (name, p) in enumerate(model.named_parameters()):
             name = name.replace('module_list.', '')
             print('%5g %40s %9s %12g %20s %10.3g %10.3g' %
@@ -246,7 +247,7 @@ def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
         s = (int(h * ratio), int(w * ratio))  # new size
         img = F.interpolate(img, size=s, mode='bilinear', align_corners=False)  # resize
         if not same_shape:  # pad/crop img
-            h, w = [math.ceil(x * ratio / gs) * gs for x in (h, w)]
+            h, w = (math.ceil(x * ratio / gs) * gs for x in (h, w))
         return F.pad(img, [0, w - s[1], 0, h - s[0]], value=0.447)  # value = imagenet mean
 
 
@@ -294,7 +295,7 @@ class ModelEMA:
 
     def __init__(self, model, decay=0.9999, updates=0):
         # Create EMA
-        self.ema = deepcopy(model.module if is_parallel(model) else model).eval()  # FP32 EMA
+        self.ema = deepcopy(de_parallel(model)).eval()  # FP32 EMA
         # if next(model.parameters()).device.type != 'cpu':
         #     self.ema.half()  # FP16 EMA
         self.updates = updates  # number of EMA updates
@@ -308,11 +309,11 @@ class ModelEMA:
             self.updates += 1
             d = self.decay(self.updates)
 
-            msd = model.module.state_dict() if is_parallel(model) else model.state_dict()  # model state_dict
+            msd = de_parallel(model).state_dict()  # model state_dict
             for k, v in self.ema.state_dict().items():
                 if v.dtype.is_floating_point:
                     v *= d
-                    v += (1. - d) * msd[k].detach()
+                    v += (1 - d) * msd[k].detach()
 
     def update_attr(self, model, include=(), exclude=('process_group', 'reducer')):
         # Update EMA attributes
