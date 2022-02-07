@@ -59,24 +59,22 @@ class DetectMultiBackend(nn.Module):
         pt, jit, onnx, engine, tflite, pb, saved_model, coreml,xml = (suffix == x for x in suffixes)  # backend booleans
         stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
         w = attempt_download(w)  # download if not local
-        
-        if jit:  # TorchScript
+        if data:  # data.yaml path (optional)
+            with open(data, errors='ignore') as f:
+                names = yaml.safe_load(f)['names']  # class names
+                
+        if pt:  # PyTorch
+            model = attempt_load(weights if isinstance(weights, list) else w, map_location=device)
+            stride = max(int(model.stride.max()), 32)  # model stride
+            names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+        elif jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
             model = torch.jit.load(w, _extra_files=extra_files)
             if extra_files['config.txt']:
                 d = json.loads(extra_files['config.txt'])  # extra_files dict
                 stride, names = int(d['stride']), d['names']
-        elif pt:  # PyTorch
-            model = attempt_load(weights, map_location=device)
-            model = attempt_load(weights if isinstance(weights, list) else w, map_location=device)
-            stride = int(model.stride.max())  # model stride
-            names = model.module.names if hasattr(model, 'module') else model.names  # get class names
-            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
-        elif coreml:  # CoreML
-            LOGGER.info(f'Loading {w} for CoreML inference...')
-            import coremltools as ct
-            model = ct.models.MLModel(w)
         elif dnn:  # ONNX OpenCV DNN
             LOGGER.info(f'Loading {w} for ONNX OpenCV DNN inference...')
             check_requirements(('opencv-python>=4.5.4',))
@@ -88,9 +86,17 @@ class DetectMultiBackend(nn.Module):
             import onnxruntime
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
             session = onnxruntime.InferenceSession(w, providers=providers)
+        elif xml:  # OpenVINO
+            LOGGER.info(f'Loading {w} for OpenVINO inference...')
+            check_requirements(('openvino-dev',))  # requires openvino-dev: https://pypi.org/project/openvino-dev/
+            import openvino.inference_engine as ie
+            core = ie.IECore()
+            network = core.read_network(model=w, weights=Path(w).with_suffix('.bin'))  # *.xml, *.bin paths
+            executable_network = core.load_network(network, device_name='CPU', num_requests=1)
         elif engine:  # TensorRT
             LOGGER.info(f'Loading {w} for TensorRT inference...')
             import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
+            check_version(trt.__version__, '7.0.0', hard=True)  # require tensorrt>=7.0.0
             Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
             logger = trt.Logger(trt.Logger.INFO)
             with open(w, 'rb') as f, trt.Runtime(logger) as runtime:
@@ -105,9 +111,17 @@ class DetectMultiBackend(nn.Module):
             binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
             context = model.create_execution_context()
             batch_size = bindings['images'].shape[0]
-        else:  # TensorFlow model (TFLite, pb, saved_model)
-            if pb:  # https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
-                LOGGER.info(f'Loading {w} for TensorFlow *.pb inference...')
+        elif coreml:  # CoreML
+            LOGGER.info(f'Loading {w} for CoreML inference...')
+            import coremltools as ct
+            model = ct.models.MLModel(w)
+        else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
+            if saved_model:  # SavedModel
+                LOGGER.info(f'Loading {w} for TensorFlow SavedModel inference...')
+                import tensorflow as tf
+                model = tf.keras.models.load_model(w)
+            elif pb:  # GraphDef https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
+                LOGGER.info(f'Loading {w} for TensorFlow GraphDef inference...')
                 import tensorflow as tf
                 def wrap_frozen_graph(gd, inputs, outputs):
                     x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=""), [])  # wrapped
@@ -116,24 +130,24 @@ class DetectMultiBackend(nn.Module):
                 graph_def = tf.Graph().as_graph_def()
                 graph_def.ParseFromString(open(w, 'rb').read())
                 frozen_func = wrap_frozen_graph(gd=graph_def, inputs="x:0", outputs="Identity:0")
-            elif saved_model:
-                LOGGER.info(f'Loading {w} for TensorFlow saved_model inference...')
-                import tensorflow as tf
-                model = tf.keras.models.load_model(w)
             elif tflite:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
-                try:
-                    import tflite_runtime.interpreter as tfl  # prefer tflite_runtime if installed
+                try:  # prefer tflite_runtime if installed
+                try:  # https://coral.ai/docs/edgetpu/tflite-python/#update-existing-tf-lite-code-for-the-edge-tpu
+                    from tflite_runtime.interpreter import Interpreter, load_delegate
                 except ImportError:
-                    import tensorflow.lite as tfl
+                    import tensorflow.lite.experimental.load_delegate as load_delegate
+                    import tensorflow.lite.Interpreter as Interpreter
+                    import tensorflow as tf
+                    Interpreter, load_delegate = tf.lite.Interpreter, tf.lite.experimental.load_delegate,
                 if 'edgetpu' in w.lower():  # Edge TPU https://coral.ai/software/#edgetpu-runtime
                     LOGGER.info(f'Loading {w} for TensorFlow Lite Edge TPU inference...')
-                    delegate = {'Linux': 'libedgetpu.so.1',  # install https://coral.ai/software/#edgetpu-runtime
+                    delegate = {'Linux': 'libedgetpu.so.1',
                                 'Darwin': 'libedgetpu.1.dylib',
                                 'Windows': 'edgetpu.dll'}[platform.system()]
-                    interpreter = tfl.Interpreter(model_path=w, experimental_delegates=[tfl.load_delegate(delegate)])
-                else:# Lite
+                    interpreter = Interpreter(model_path=w, experimental_delegates=[load_delegate(delegate)])
+                else:  # Lite
                     LOGGER.info(f'Loading {w} for TensorFlow Lite inference...')
-                    interpreter = tfl.Interpreter(model_path=w)  # load TFLite mode
+                    interpreter = Interpreter(model_path=w)  # load TFLite model
                 interpreter.allocate_tensors()  # allocate
                 input_details = interpreter.get_input_details()  # inputs
                 output_details = interpreter.get_output_details()  # outputs

@@ -49,9 +49,12 @@ def attempt_download(file, repo='ultralytics/yolov5'):  # from utils.downloads i
         name = Path(urllib.parse.unquote(str(file))).name  # decode '%2F' to '/' etc.
         if str(file).startswith(('http:/', 'https:/')):  # download
             url = str(file).replace(':/', '://')  # Pathlib turns :// -> :/
-            name = name.split('?')[0]  # parse authentication https://url.com/file.txt?auth...
-            safe_download(file=name, url=url, min_bytes=1E5)
-            return name
+            file = name.split('?')[0]  # parse authentication https://url.com/file.txt?auth...
+            if Path(file).is_file():
+                print(f'Found {url} locally at {file}')  # file already exists
+            else:
+                safe_download(file=file, url=url, min_bytes=1E5)
+            return file
 
         # GitHub assets
         file.parent.mkdir(parents=True, exist_ok=True)  # make parent dir (if required)
@@ -59,13 +62,13 @@ def attempt_download(file, repo='ultralytics/yolov5'):  # from utils.downloads i
             response = requests.get(f'https://api.github.com/repos/{repo}/releases/latest').json()  # github api
             assets = [x['name'] for x in response['assets']]  # release assets, i.e. ['yolov5s.pt', 'yolov5m.pt', ...]
             tag = response['tag_name']  # i.e. 'v1.0'
-        except:  # fallback plan
-            assets = ['yolov5s.pt', 'yolov5m.pt', 'yolov5l.pt', 'yolov5x.pt',
-                      'yolov5s6.pt', 'yolov5m6.pt', 'yolov5l6.pt', 'yolov5x6.pt']
+        except Exception:  # fallback plan
+            assets = ['yolov5n.pt', 'yolov5s.pt', 'yolov5m.pt', 'yolov5l.pt', 'yolov5x.pt',
+                      'yolov5n6.pt', 'yolov5s6.pt', 'yolov5m6.pt', 'yolov5l6.pt', 'yolov5x6.pt']
             try:
                 tag = subprocess.check_output('git tag', shell=True, stderr=subprocess.STDOUT).decode().split()[-1]
-            except:
-                tag = 'v5.0'  # current release
+            except Exception:
+                tag = 'v6.0'  # current release
 
         if name in assets:
             safe_download(file,
