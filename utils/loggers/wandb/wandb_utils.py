@@ -252,6 +252,8 @@ class WandbLogger():
                 self.map_val_table_path()
         if opt.bbox_interval == -1:
             self.bbox_interval = opt.bbox_interval = (opt.epochs // 10) if opt.epochs > 10 else 1
+            if opt.evolve:
+                self.bbox_interval = opt.bbox_interval = opt.epochs + 1
         train_from_artifact = self.train_artifact_path is not None and self.val_artifact_path is not None
         # Update the the data_dict to point to local artifacts dir
         if train_from_artifact:
@@ -485,7 +487,7 @@ class WandbLogger():
             if self.current_epoch % self.bbox_interval == 0:
                 box_data = [{"position": {"minX": xyxy[0], "minY": xyxy[1], "maxX": xyxy[2], "maxY": xyxy[3]},
                              "class_id": int(cls),
-                             "box_caption": f"{names[cls]} {conf:.3f}",
+                             "box_caption": f"{names[int(cls)]} {conf:.3f}",
                              "scores": {"class_score": conf},
                              "domain": "pixel"} for *xyxy, conf, cls in pred.tolist()]
                 boxes = {"predictions": {"box_data": box_data, "class_labels": names}}  # inference-space

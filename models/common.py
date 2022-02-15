@@ -53,10 +53,7 @@ class DetectMultiBackend(nn.Module):
           
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        suffix = Path(w).suffix.lower()
-        suffixes = ['.pt', '.torchscript', '.onnx','.engine', '.tflite', '.pb', '', '.mlmodel','.xml']
-        check_suffix(w, suffixes)  # check weights have acceptable suffix
-        pt, jit, onnx, engine, tflite, pb, saved_model, coreml,xml = (suffix == x for x in suffixes)  # backend booleans
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs = self.model_type(w)
         stride, names = 64, [f'class{i}' for i in range(1000)]  # assign defaults
         w = attempt_download(w)  # download if not local
         if data:  # data.yaml path (optional)
@@ -91,6 +88,8 @@ class DetectMultiBackend(nn.Module):
             check_requirements(('openvino-dev',))  # requires openvino-dev: https://pypi.org/project/openvino-dev/
             import openvino.inference_engine as ie
             core = ie.IECore()
+            if not Path(w).is_file():  # if not *.xml
+                w = next(Path(w).glob('*.xml'))  # get *.xml file from *_openvino_model dir
             network = core.read_network(model=w, weights=Path(w).with_suffix('.bin'))  # *.xml, *.bin paths
             executable_network = core.load_network(network, device_name='CPU', num_requests=1)
         elif engine:  # TensorRT
@@ -221,7 +220,19 @@ class DetectMultiBackend(nn.Module):
                 im = torch.zeros(*imgsz).to(self.device).type(torch.half if half else torch.float)  # input image
                 self.forward(im)  # warmup
         
-
+    @staticmethod
+    def model_type(p='path/to/model.pt'):
+        # Return model type from model path, i.e. path='path/to/model.onnx' -> type=onnx
+        from export import export_formats
+        suffixes = list(export_formats().Suffix) + ['.xml']  # export suffixes
+        check_suffix(p, suffixes)  # checks
+        p = Path(p).name  # eliminate trailing separators
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, xml2 = (s in p for s in suffixes)
+        xml |= xml2  # *_openvino_model or *.xml
+        tflite &= not edgetpu  # *.tflite
+        return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs
+        
+        
 class Conv(nn.Module):
     # Standard convolution
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
