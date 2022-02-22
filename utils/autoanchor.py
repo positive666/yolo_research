@@ -34,10 +34,10 @@ def check_anchors(dataset, model, thr=4.0, imgsz=640):
 
     def metric(k):  # compute metric
         r = wh[:, None] / k[None]
-        x = torch.min(r, 1. / r).min(2)[0]  # ratio metric
+        x = torch.min(r, 1 / r).min(2)[0]  # ratio metric
         best = x.max(1)[0]  # best_x
-        aat = (x > 1. / thr).float().sum(1).mean()  # anchors above threshold
-        bpr = (best > 1. / thr).float().mean()  # best possible recall
+        aat = (x > 1 / thr).float().sum(1).mean()  # anchors above threshold
+        bpr = (best > 1 / thr).float().mean()  # best possible recall
         return bpr, aat
 
     anchors = m.anchors.clone() * m.stride.to(m.anchors.device).view(-1, 1, 1)  # current anchors
@@ -82,11 +82,11 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
     from scipy.cluster.vq import kmeans
 
     npr = np.random
-    thr = 1. / thr
+    thr = 1 / thr
 
     def metric(k, wh):  # compute metrics
         r = wh[:, None] / k[None]
-        x = torch.min(r, 1. / r).min(2)[0]  # ratio metric
+        x = torch.min(r, 1 / r).min(2)[0]  # ratio metric
         # x = wh_iou(wh, torch.tensor(k))  # iou metric
         return x, x.max(1)[0]  # x, best_x
 
@@ -102,7 +102,7 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
             f'{PREFIX}n={n}, img_size={img_size}, metric_all={x.mean():.3f}/{best.mean():.3f}-mean/best, ' \
             f'past_thr={x[x > thr].mean():.3f}-mean: '
         for i, x in enumerate(k):
-             s += '%i,%i, ' % (round(x[0]), round(x[1]))
+            s += '%i,%i, ' % (round(x[0]), round(x[1]))
         if verbose:
             LOGGER.info(s[:-2])
         return k
@@ -160,6 +160,6 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
             f, k = fg, kg.copy()
             pbar.desc = f'{PREFIX}Evolving anchors with Genetic Algorithm: fitness = {f:.4f}'
             if verbose:
-                print_results(k,verbose)
+                print_results(k, verbose)
 
     return print_results(k)

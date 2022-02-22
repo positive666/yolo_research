@@ -36,7 +36,7 @@ class Callbacks:
             'teardown': [],
         }
         self.stop_training = False  # set True to interrupt training
-        
+
     def register_action(self, hook, name='', callback=None):
         """
         Register a new action to a callback hook
