@@ -2,25 +2,8 @@
 
 预告：swintransformer的代码基本完成，两种修改方法，届时会结合博客一起发出，最近项目比较忙，看时间尽快更
 
-
-
    一切改动都基于YOLOV5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
    
-## C++ sdk的完整Deepstream5.1部署（内置libKafka服务），目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
-  [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
-
-***
-   
-   不间断保持更新和汇总实验：算子引入，LOSS改进，针对网络结构进行不同的任务的最优结构汇总，样本匹配实验，业务拓展等等
-   有针对于自己数据集或者公开数据集的效果请联系，目前有很多实验没做，平时工作繁忙，保证定期更新，也希望大家能一起探索最优结构和实验效果。
-   
-***
-
-
-***
-目前反馈的实验结果（待整理更新） 
-***
-
 ***
 最近更新：
 - 2022/2.22 忙里抽闲：更新了今天的yolov5的工程修复，修改了解耦头的代码风格，直接yaml选择参考使用，服务器回滚了代码。SWIN算子在，YAML文件丢失了，找时间从新写一个再上传，太忙看更新可能优先GIT，等有空博客细致归纳下
@@ -34,6 +17,24 @@
 - 2021.6     Botnet transformer 算子块引入于Backbone底层
 - 2021.2.10  全网首发的YOLOV5魔改，ASFF检测头封装加入、注意力机制CBAM、CooRD、等注意力算法引入，并介绍了通用修改方法
 ***
+
+
+   
+## C++ sdk的完整Deepstream5.1部署（内置libKafka服务）
+  目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
+  [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
+
+***
+   
+   不间断保持更新和汇总实验：算子引入，LOSS改进，针对网络结构进行不同的任务的最优结构汇总，样本匹配实验，业务拓展等等
+   有针对于自己数据集或者公开数据集的效果请联系，目前有很多实验没做，平时工作繁忙，保证定期更新，也希望大家能一起探索最优结构和实验效果。
+   
+***
+
+
+
+
+
 
 # 业务拓展（可做人脸、文字等特定目标检测）
 
