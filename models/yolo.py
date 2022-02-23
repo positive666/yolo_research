@@ -115,7 +115,7 @@ class Decoupled_Detect(nn.Module):
           
             reg_heads=self.reg_c2(self.reg_c1(x[i]))  #回归头
             x[i]=torch.cat([self.cls_head(self.cls_c2(self.cls_c1(x[i]))),self.reg_head(reg_heads),self.obj_head(reg_heads)],1)
-            print('check size:',x[i].size())
+          
                   
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()

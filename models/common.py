@@ -1278,8 +1278,8 @@ class PatchEmbed(nn.Module):
         super().__init__()
         patch_size = (patch_size,patch_size)
         self.patch_size = patch_size
-        print(patch_size)
-        print(self.patch_size)
+        #print(patch_size)
+        #print(self.patch_size)
         self.in_chans = in_chans
         self.embed_dim = embed_dim
 
@@ -1637,7 +1637,7 @@ class SwinTransformer_Layer(nn.Module):
         return attn_mask
 
     def forward(self, x):
-        print('swinlayers input shape:',x.size())
+
         B, L, C = x.size()
         H=int(L**0.5)
         W=H 
@@ -1662,6 +1662,6 @@ class SwinTransformer_Layer(nn.Module):
             x = x.view(B,-1,H,W)
            # x = window_reverse(x, self.window_size, H, W)  # [B, H', W', C]
             #x = torch.flatten(x, 1)
-        print("Swin-Transform 层 输出维度:",x.size())
+        #print("Swin-Transform 层 输出维度:",x.size())
         return x 
         
