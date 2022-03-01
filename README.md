@@ -2,7 +2,7 @@
 
 声明：这一年里有很多朋友用修改的idea方式以及注意力和设计结构去做Paper，不用咨询我意见：一切free！只是希望各位能把实验数据反馈给我，因为平时工作业务比较忙，实验的时间不够。也是借此目的来和大家一起学习交流。
 
-   一切改动都基于Yolov5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
+   不改项目只FORK，一切改动都基于Yolov5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
    
 ***
 最近更新：
