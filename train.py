@@ -157,7 +157,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     for v in model.modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias
             g2.append(v.bias)
-        if isinstance(v, nn.BatchNorm2d):  # weight (no decay)
+        if isinstance(v, nn.BatchNorm2d) or isinstance(v, nn.LayerNorm):  # weight (no decay)
             g0.append(v.weight)
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
             g1.append(v.weight)
@@ -375,7 +375,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                            save_dir=save_dir,
                                            plots=False,
                                            callbacks=callbacks,
-                                           compute_loss=compute_loss)
+                                           compute_loss=compute_loss,
+                                           half=not opt.swin_float)
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
@@ -439,7 +440,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                             verbose=True,
                                             plots=True,
                                             callbacks=callbacks,
-                                            compute_loss=compute_loss)  # val best model with plots
+                                            compute_loss=compute_loss,
+                                            half=not opt.swin_float)  # val best model with plots
                     if is_coco:
                         callbacks.run('on_fit_epoch_end', list(mloss) + list(results) + lr, epoch, best_fitness, fi)
 
@@ -484,12 +486,14 @@ def parse_opt(known=False):
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
-
+     
     # Weights & Biases arguments
     parser.add_argument('--entity', default=None, help='W&B: Entity')
     parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='W&B: Upload data, "val" option')
     parser.add_argument('--bbox_interval', type=int, default=-1, help='W&B: Set bounding-box image logging interval')
     parser.add_argument('--artifact_alias', type=str, default='latest', help='W&B: Version of dataset artifact to use')
+    # swin float()
+    parser.add_argument('--swin_float', action='store_true', help='swin not use half to train/Val')
 
     opt = parser.parse_known_args()[0] if known else parser.parse_args()
     return opt
