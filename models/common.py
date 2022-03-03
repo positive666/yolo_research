@@ -1263,7 +1263,20 @@ class Mlp(nn.Module):
         x = self.drop2(x)
         return x
         
+class LayerNorm(nn.Module):
+    """ MLP as used in Vision Transformer, MLP-Mixer and related networks
+    """
+    def __init__(self, dim):
+        super().__init__()
+        self.norm=nn.LayerNorm(dim)
 
+    def forward(self, x):
+        #print("0:",x.size())
+        x = x.permute(0, 3, 2, 1).contiguous() # B,H,W,C
+        x=self.norm(x)
+        #print("1:",x.size())
+        return x.permute(0, 3, 2, 1).contiguous()      
+        
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding
 
