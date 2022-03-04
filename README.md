@@ -6,8 +6,8 @@
    
 ***
 最近更新：
-- 2022/3.1 （不完整更新,供参考，怕忙断更，所以先放出部分修改，目前还在动态调试中） 按照SWinstransformer2 的改进点：修改了NORM层的位置/attention将dot换成scaled cosine self-attention，待更新的优化部分：1.序列窗口注意力计，降低显存开销 2、训练优化器
-- 2022/2.28  添加了一个swintramsformer的Backbone和yaml示意结构，很多人把SWIN还像之前做成注意力层，但是其实swin设计是为了摒弃CNN去和NLP一统，而且精髓在于控制计算复杂度，其实backbone的全替换也许更值得尝试 ，内存开销和结构设计待优化
+- 2022/3.1 （不完整更新,供参考，怕忙断更，所以先放出部分修改，目前还在动态调试中） 按照SWinstransformerV2.0 的改进点：修改了NORM层的位置/attention将dot换成scaled cosine self-attention，待更新的优化部分：1.序列窗口注意力计算，降低显存开销 2、训练优化器
+- 2022/2.28  添加了一个Swintransformer的Backbone和yaml示意结构，很多人把SWIN还像之前做成注意力层，但是其实swin设计是为了摒弃CNN去和NLP一统，而且精髓在于控制计算复杂度，其实backbone的全替换也许更值得尝试 ，内存开销和结构设计待优化
 - 2022/2.22 忙里抽闲：更新了今天的yolov5的工程修复，修改了解耦头的代码风格，直接yaml选择参考使用，服务器回滚了代码。SWIN算子在，YAML文件丢失了，找时间从新写一个再上传，太忙看更新可能优先GIT，等有空博客细致归纳下
 - 2022/2.6   ASFF使用的BUG已经修复;近期更新Swintransformer代码，简单说明下程序上其实是两种改法：1.类似算子层的修改，这个比较简单 2、全部替换成Swintreanformer，这个对于整个程序存在一定的代码修改地方，稍微复杂点。
 - 2022/1.9   补充一些注意力算子GAM，原理后续CSDN说明，修复BUG
