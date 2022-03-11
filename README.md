@@ -5,7 +5,8 @@
 
 
 工程部署（强项！）：关于工程部署，个人看来，本项目只是属于研究探索，但是工程部署讲究简单高效、故可以参考我的Deepsteram SDK改的项目，集合了通用检测、人脸识别、OCR三个项目，高性能的部署AI框架开发逻辑，这个项目是我2021年整理并开源的，代码还未规范，但程序是没问题的。
-##  工程部署 Why Deepstream?  DS_5.1&&Tensorrt7+ ,repo:https://github.com/positive666/Deepstream_Project
+##  工程部署 Why Deepstream?  
+    DS_5.1&&Tensorrt7+ ,repo:https://github.com/positive666/Deepstream_Project
 
      1.英伟达原生套装Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
 	 2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，但由于YOLOV5NANO版本的存在(无非是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代，可能你上个月刚发的剪枝版本号称干过了原版一个点，但是作者调SDG和学习率把你干了回去)
