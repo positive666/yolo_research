@@ -57,9 +57,10 @@ def check_anchors(dataset, model, thr=4.0, imgsz=640):
             anchors = torch.tensor(anchors, device=m.anchors.device).type_as(m.anchors)
             m.anchors[:] = anchors.clone().view_as(m.anchors) / m.stride.to(m.anchors.device).view(-1, 1, 1)  # loss
             check_anchor_order(m)
-            LOGGER.info(f'{PREFIX}New anchors saved to model. Update model *.yaml to use these anchors in the future.')
+            s = f'{PREFIX}Done ✅ (optional: update model *.yaml to use these anchors in the future)'
         else:
-            LOGGER.info(f'{PREFIX}Original anchors better than new anchors. Proceeding with original anchors.')
+            s = f'{PREFIX}Done ⚠️ (original anchors better than new anchors, proceeding with original anchors)'
+        LOGGER.info(emojis(s))
 
 
 def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
@@ -120,11 +121,11 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
     # Filter
     i = (wh0 < 3.0).any(1).sum()
     if i:
-        LOGGER.info(f'{PREFIX}WARNING: Extremely small objects found. {i} of {len(wh0)} labels are < 3 pixels in size.')
+        LOGGER.info(f'{PREFIX}WARNING: Extremely small objects found: {i} of {len(wh0)} labels are < 3 pixels in size')
     wh = wh0[(wh0 >= 2.0).any(1)]  # filter > 2 pixels
     # wh = wh * (npr.rand(wh.shape[0], 1) * 0.9 + 0.1)  # multiply by random scale 0-1
 
-     # Kmeans init
+    # Kmeans init
     try:
         LOGGER.info(f'{PREFIX}Running kmeans for {n} anchors on {len(wh)} points...')
         assert n <= len(wh)  # apply overdetermined constraint
@@ -133,6 +134,7 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
         assert n == len(k)  # kmeans may return fewer points than requested if wh is insufficient or too similar
     except Exception:
         LOGGER.warning(f'{PREFIX}WARNING: switching strategies from kmeans to random init')
+        k = np.sort(npr.rand(n * 2)).reshape(n, 2) * img_size  # random init
     wh, wh0 = (torch.tensor(x, dtype=torch.float32) for x in (wh, wh0))
     k = print_results(k, verbose=False)
 

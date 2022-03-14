@@ -33,8 +33,8 @@ from utils.torch_utils import torch_distributed_zero_first
 
 # Parameters
 HELP_URL = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
-IMG_FORMATS = ['bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp']  # include image suffixes
-VID_FORMATS = ['asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'wmv']  # include video suffixes
+IMG_FORMATS = 'bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp'  # include image suffixes
+VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv'  # include video suffixes
 
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
@@ -497,8 +497,8 @@ class LoadImagesAndLabels(Dataset):
                 if cache_images == 'disk':
                     gb += self.npy_files[i].stat().st_size
                 else:  # 'ram'
-                    self.imgs[i], self.img_hw0[i], self.img_hw[i] = x  # im, hw_orig, hw_resized = load_image(self, i)
-                    gb += self.imgs[i].nbytes
+                    self.ims[i], self.im_hw0[i], self.im_hw[i] = x  # im, hw_orig, hw_resized = load_image(self, i)
+                    gb += self.ims[i].nbytes
                 pbar.desc = f'{prefix}Caching images ({gb / 1E9:.1f}GB {cache_images})'
             pbar.close()
 
@@ -509,7 +509,7 @@ class LoadImagesAndLabels(Dataset):
         desc = f"{prefix}Scanning '{path.parent / path.stem}' images and labels..."
         with Pool(NUM_THREADS) as pool:
             pbar = tqdm(pool.imap(verify_image_label, zip(self.im_files, self.label_files, repeat(prefix))),
-                        desc=desc, total=len(self.img_files))
+                        desc=desc, total=len(self.im_files))
             for im_file, lb, shape, segments, nm_f, nf_f, ne_f, nc_f, msg in pbar:
                 nm += nm_f
                 nf += nf_f
@@ -638,12 +638,12 @@ class LoadImagesAndLabels(Dataset):
             return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
         else:
             return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
-            
+
     def cache_images_to_disk(self, i):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
         if not f.exists():
-            np.save(f.as_posix(), cv2.imread(self.im_files[i]))        
+            np.save(f.as_posix(), cv2.imread(self.im_files[i]))
 
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
@@ -906,7 +906,7 @@ def verify_image_label(args):
             nf = 1  # label found
             with open(lb_file) as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any([len(x) > 8 for x in lb]):  # is segment
+                if any(len(x) > 6 for x in lb):  # is segment
                     classes = np.array([x[0] for x in lb], dtype=np.float32)
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)

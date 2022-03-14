@@ -239,9 +239,9 @@ def file_size(path):
     mb = 1 << 20  # bytes to MiB (1024 ** 2)
     path = Path(path)
     if path.is_file():
-        return path.stat().st_size / 1E6
+        return path.stat().st_size / mb
     elif path.is_dir():
-        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / 1E6
+        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / mb
     else:
         return 0.0
 
@@ -268,7 +268,7 @@ def git_describe(path=ROOT):  # path must be a directory
 @WorkingDirectory(ROOT)
 def check_git_status():
     # Recommend 'git pull' if code is out of date
-    msg = ', for updates see https://github.com/ultralytics/yolov5'
+    msg = ', for updates see https://github.com/positive666/yolov5'
     s = colorstr('github: ')  # string
     assert Path('.git').exists(), s + 'skipping check (not a git repository)' + msg
     assert not is_docker(), s + 'skipping check (Docker image)' + msg
@@ -818,7 +818,7 @@ def print_mutation(results, hyp, save_dir, bucket, prefix=colorstr('evolve: ')):
     # Download (optional)
     if bucket:
         url = f'gs://{bucket}/evolve.csv'
-        if gsutil_getsize(url) > (os.path.getsize(evolve_csv) if os.path.exists(evolve_csv) else 0):
+        if gsutil_getsize(url) > (evolve_csv.stat().st_size if evolve_csv.exists() else 0):
             os.system(f'gsutil cp {url} {save_dir}')  # download evolve.csv if larger than local
 
     # Log to evolve.csv
