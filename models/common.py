@@ -596,18 +596,51 @@ class Concat(nn.Module):
         return torch.cat(x, self.d)
 
 
-# class NMS(nn.Module):
-    # # Non-Maximum Suppression (NMS) module
-    # conf = 0.25  # confidence threshold
-    # iou = 0.45  # IoU threshold
-    # classes = None  # (optional list) filter by class
-    # max_det = 1000  # maximum number of detections per image
+class ShuffleNetV2(nn.Module):
+    def __init__(self, c1, c2, stride,shuffle_groups=3):  # in, out, stride,shuffle_groups
+        super().__init__()
 
-    # def __init__(self):
-        # super(NMS, self).__init__()
+        self.stride = stride
+        self.shuffle_groups=shuffle_groups
+        branch_features = c2 // 2
+        assert (self.stride != 1) or (c1 == branch_features << 1)
 
-    # def forward(self, x):
-        # return non_max_suppression(x[0], self.conf, iou_thres=self.iou, classes=self.classes, max_det=self.max_det)
+        self.branch1 = nn.Sequential(
+                nn.Conv2d(c1, c1, kernel_size=3, stride=self.stride, padding=1, groups=c1),
+                nn.BatchNorm2d(c1),
+                nn.Conv2d(c1, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(branch_features),
+                nn.ReLU(inplace=True))if self.stride == 2 else  self.branch1 = nn.Sequential() #如果步长是2 ，没有通道split
+
+        self.branch2 = nn.Sequential(
+            nn.Conv2d(c1 if (self.stride == 2) else branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(branch_features),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1, groups=branch_features),
+            nn.BatchNorm2d(branch_features),
+
+            nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(branch_features),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        if self.stride== 1:
+            x1, x2 = x.chunk(2, dim=1)
+            out = torch.cat((x1, self.branch2(x2)), dim=1)
+        else:
+            out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
+        out = self.channel_shuffle(out, self.shuffle_groups)
+        return out
+
+    def channel_shuffle(self, x, groups):
+        #RESHAPE----->transpose------->Flatten 
+        B, C, H, W = x.size()
+        out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
+        out=out.view(B, C, H, W) 
+        return out
+
 
 
 class AutoShape(nn.Module):
