@@ -610,7 +610,7 @@ class ShuffleNetV2(nn.Module):
                 nn.BatchNorm2d(c1),
                 nn.Conv2d(c1, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm2d(branch_features),
-                nn.ReLU(inplace=True))if self.stride == 2 else  self.branch1 = nn.Sequential() #如果步长是2 ，没有通道split
+                nn.ReLU(inplace=True))if self.stride == 2 else  nn.Sequential() #如果步长是2 ，没有通道split
 
         self.branch2 = nn.Sequential(
             nn.Conv2d(c1 if (self.stride == 2) else branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
