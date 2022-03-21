@@ -33,7 +33,7 @@ from utils.torch_utils import copy_attr, time_sync
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
-        p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
+        p = k // 2 if isinstance(k, int) else (x // 2 for x in k)  # auto-pad
     return p
 
 class DetectMultiBackend(nn.Module):
@@ -202,7 +202,7 @@ class DetectMultiBackend(nn.Module):
         else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
             im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             if self.saved_model:  # SavedModel
-                y = self.model(im, training=False).numpy()
+                y = (self.model(im, training=False) if self.keras else self.model(im)).numpy()
             elif self.pb:  # GraphDef
                 y = self.frozen_func(x=self.tf.constant(im)).numpy()
             else:  # Lite or Edge TPU
@@ -426,11 +426,10 @@ class C3(nn.Module):
     def __init__(self, c1, c2, n=1, Involution=False,shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(C3, self).__init__()
         c_ = int(c2 * e)  # hidden channels
-        #self.cv1 =  Conv(c1, c1*2, 1, 1) if(Involution==False) else (c1, c1, 1, 1)
         self.cv1 = Conv(c1, c_, 1, 1) 
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
-        self.m = nn.Sequential(*[(InvolutionBottleneck(c_, c_, shortcut, g, e=1.0) if(Involution) else Bottleneck(c_, c_, shortcut, g, e=1.0) )for _ in range(n)]) 
+        self.m = nn.Sequential(*((InvolutionBottleneck(c_, c_, shortcut, g, e=1.0) if(Involution) else Bottleneck(c_, c_, shortcut, g, e=1.0) )for _ in range(n))) 
         # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
 
     def forward(self, x):
@@ -458,7 +457,7 @@ class C3Ghost(C3):
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*[GhostBottleneck(c_, c_) for _ in range(n)])
+        self.m = nn.Sequential(*(GhostBottleneck(c_, c_) for _ in range(n)))
         
 
 class SPP(nn.Module):
@@ -492,7 +491,7 @@ class SPPF(nn.Module):
             warnings.simplefilter('ignore')  # suppress torch 1.9.0 max_pool2d() warning
             y1 = self.m(x)
             y2 = self.m(y1)
-            return self.cv2(torch.cat([x, y1, y2, self.m(y2)], 1))
+            return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
             
             
 class Focus(nn.Module):
@@ -503,7 +502,7 @@ class Focus(nn.Module):
         # self.contract = Contract(gain=2)
 
     def forward(self, x):  # x(b,c,w,h) -> y(b,4c,w/2,h/2)
-        return self.conv(torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1))
+        return self.conv(torch.cat((x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]), 1))
         # return self.conv(self.contract(x))
 
 
@@ -517,7 +516,7 @@ class GhostConv(nn.Module):
 
     def forward(self, x):
         y = self.cv1(x)
-        return torch.cat([y, self.cv2(y)], 1)
+        return torch.cat((y, self.cv2(y)), 1)
         
 
 class GhostBottleneck(nn.Module):
@@ -558,7 +557,7 @@ class Concat_bifpn(nn.Module):
         self.conv = Conv(c1, c2, 1 ,1 ,0 )
         self.act= nn.ReLU()
 
-    def forward(self, x): # mutil-layer 1-3 layers
+    def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat 
         #print("bifpn:",x.shape)
         if len(x) == 2:
             w = self.w1
