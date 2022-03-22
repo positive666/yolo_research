@@ -596,7 +596,13 @@ class Concat(nn.Module):
     def forward(self, x):
         return torch.cat(x, self.d)
 
-
+def channel_shuffle(self, x, groups=2):
+        #RESHAPE----->transpose------->Flatten 
+        B, C, H, W = x.size()
+        out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
+        out=out.view(B, C, H, W) 
+        return out
+        
 class ShuffleNetV2(nn.Module):
     def __init__(self, c1, c2, stride,shuffle_groups=3):  # in, out, stride,shuffle_groups
         super().__init__()
@@ -632,15 +638,9 @@ class ShuffleNetV2(nn.Module):
             out = torch.cat((x1, self.branch2(x2)), dim=1)
         else:
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
-        out = self.channel_shuffle(out, self.shuffle_groups)
+        out = channel_shuffle(out, self.shuffle_groups)
         return out
 
-    def channel_shuffle(self, x, groups):
-        #RESHAPE----->transpose------->Flatten 
-        B, C, H, W = x.size()
-        out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
-        out=out.view(B, C, H, W) 
-        return out
 
 
 
@@ -1183,34 +1183,37 @@ class CTR3(nn.Module):
         
 class GAM_Attention(nn.Module):
    #https://paperswithcode.com/paper/global-attention-mechanism-retain-information
-    def __init__(self, in_channels, out_channels, rate=4):
+    def __init__(self, in_channels, out_channels, group=True,groups==4):
         super(GAM_Attention, self).__init__()
-
+        
         self.channel_attention = nn.Sequential(
-            nn.Linear(in_channels, int(in_channels / rate)),
+            nn.Linear(in_channels, int(in_channels / groups)),
             nn.ReLU(inplace=True),
-            nn.Linear(int(in_channels / rate), in_channels)
+            nn.Linear(int(in_channels / groups), in_channels)
         )
-
+        
         self.spatial_attention = nn.Sequential(
-            nn.Conv2d(in_channels, int(in_channels / rate), kernel_size=7, padding=3),
-            nn.BatchNorm2d(int(in_channels / rate)),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(int(in_channels / rate), out_channels, kernel_size=7, padding=3),
-            nn.BatchNorm2d(out_channels)
+            DWConv(in_channels,out_channels,7,1,3) if group else Conv(in_channels,in_channels//groups,7,1,3),   
+            DWConv(out_channels,out_channels,7,1,3) if group else Conv(int(in_channels / groups), out_channels, 7,1,3)
+            # nn.Conv2d(in_channels,in_channels//groups,kernel_size=7, padding=3,groups=in_channels//groups) if group else nn.Conv2d(in_channels,in_channels//groups,kernel_size=7, padding=3),
+            # nn.BatchNorm2d(int(in_channels / groups)),
+            # nn.ReLU(inplace=True),
+            # nn.Conv2d(in_channels//groups,out_channels,kernel_size=7, padding=3) if group else nn.Conv2d(in_channels,in_channels//groups,kernel_size=7, padding=3),
+            # nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x):
+        
         b, c, h, w = x.shape
         x_permute = x.permute(0, 2, 3, 1).view(b, -1, c)
         x_att_permute = self.channel_attention(x_permute).view(b, h, w, c)
         x_channel_att = x_att_permute.permute(0, 3, 1, 2)
-
+       
         x = x * x_channel_att
-
+ 
         x_spatial_att = self.spatial_attention(x).sigmoid()
         out = x * x_spatial_att
-
+        out=channel_shuffle(out,4)) #last shuffle 
         return out      
 
 def drop_path_f(x, drop_prob: float = 0., training: bool = False):
