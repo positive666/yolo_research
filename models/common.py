@@ -598,7 +598,7 @@ class Concat(nn.Module):
 
 def channel_shuffle(self, x, groups=2):
         #RESHAPE----->transpose------->Flatten 
-        B, C, H, W = x.size()
+        B, C, H, W = x.shape
         out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
         out=out.view(B, C, H, W) 
         return out
