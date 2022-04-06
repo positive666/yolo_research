@@ -35,7 +35,14 @@ def autopad(k, p=None):  # kernel, padding
     if p is None:
         p = k // 2 if isinstance(k, int) else (x // 2 for x in k)  # auto-pad
     return p
-
+    
+def channel_shuffle(x, groups=2):   ##shuffle channel 
+        #RESHAPE----->transpose------->Flatten 
+        B, C, H, W = x.size()
+        out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
+        out=out.view(B, C, H, W) 
+        return out
+        
 class DetectMultiBackend(nn.Module):
     # YOLOv5 MultiBackend class for python inference on various backends
     def __init__(self, weights='yolov5s.pt', device=torch.device('cpu'), dnn=False, data=None, fp16=False):
@@ -596,12 +603,7 @@ class Concat(nn.Module):
     def forward(self, x):
         return torch.cat(x, self.d)
 
-def channel_shuffle(self, x, groups=2):
-        #RESHAPE----->transpose------->Flatten 
-        B, C, H, W = x.shape
-        out = x.view(B, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous()
-        out=out.view(B, C, H, W) 
-        return out
+
         
 class ShuffleNetV2(nn.Module):
     def __init__(self, c1, c2, stride,shuffle_groups=3):  # in, out, stride,shuffle_groups
