@@ -143,7 +143,8 @@ class DetectMultiBackend(nn.Module):
                     ge = x.graph.as_graph_element
                     return x.prune(tf.nest.map_structure(ge, inputs), tf.nest.map_structure(ge, outputs))
                 gd = tf.Graph().as_graph_def()  # graph_def
-                gd.ParseFromString(open(w, 'rb').read())
+                with open(w, 'rb') as f:
+                    gd.ParseFromString(f.read())
                 frozen_func = wrap_frozen_graph(gd, inputs="x:0", outputs="Identity:0")
             elif tflite or edgetpu:  # https://www.tensorflow.org/lite/guide/python#install_tensorflow_lite_for_python
                 try:  # https://coral.ai/docs/edgetpu/tflite-python/#update-existing-tf-lite-code-for-the-edge-tpu
@@ -172,9 +173,10 @@ class DetectMultiBackend(nn.Module):
     def forward(self, im, augment=False, visualize=False, val=False):
         # YOLOv5 MultiBackend inference
         b, ch, h, w = im.shape  # batch, channel, height, width
-        if self.pt or self.jit:  # PyTorch
-            y = self.model(im) if self.jit else self.model(im, augment=augment, visualize=visualize)
-            return y if val else y[0]
+        if self.pt:  # PyTorch
+            y = self.model(im, augment=augment, visualize=visualize)[0]
+        elif self.jit:  # TorchScript
+            y = self.model(im)[0]
         elif self.dnn:  # ONNX OpenCV DNN
             im = im.cpu().numpy()  # torch to numpy
             self.net.setInput(im)
@@ -225,16 +227,19 @@ class DetectMultiBackend(nn.Module):
                     scale, zero_point = output['quantization']
                     y = (y.astype(np.float32) - zero_point) * scale  # re-scale
             y[..., :4] *= [w, h, w, h]  # xywh normalized to pixels
-            
-        y = torch.tensor(y)
+
+        if isinstance(y, np.ndarray):
+            y = torch.tensor(y, device=self.device)
         return (y, []) if val else y
+
         
     def warmup(self, imgsz=(1, 3, 640, 640)):
         # Warmup model by running inference once
-        if self.pt or self.jit or self.onnx or self.engine:  # warmup types
-            if isinstance(self.device, torch.device) and self.device.type != 'cpu':  # only warmup GPU models
-                im = torch.zeros(*imgsz).to(self.device).type(torch.half if self.fp16 else torch.float)  # input image
-                self.forward(im)  # warmup
+        if any((self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb)):  # warmup types
+            if self.device.type != 'cpu':  # only warmup GPU models
+                im = torch.zeros(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
+                for _ in range(2 if self.jit else 1):  #
+                    self.forward(im)  # warmup
         
     @staticmethod
     def model_type(p='path/to/model.pt'):
@@ -654,6 +659,7 @@ class AutoShape(nn.Module):
     multi_label = False  # NMS multiple labels per box
     classes = None  # (optional list) filter by class, i.e. = [0, 15, 16] for COCO persons, cats and dogs
     max_det = 1000  # maximum number of detections per image
+    amp = False  # Automatic Mixed Precision (AMP) inference
     
     def __init__(self, model):
         super().__init__()
@@ -723,8 +729,13 @@ class AutoShape(nn.Module):
             t.append(time_sync())
 
             # Post-process
-            y = non_max_suppression(y if self.dmb else y[0], self.conf, self.iou, self.classes,
-                                    self.agnostic, self.multi_label, max_det=self.max_det)  #NMS
+            y = non_max_suppression(y if self.dmb else y[0],
+                                    self.conf,
+                                    self.iou,
+                                    self.classes,
+                                    self.agnostic,
+                                    self.multi_label,
+                                    max_det=self.max_det)  # NMS
             for i in range(n):
                 scale_coords(shape1, y[i][:, :4], shape0[i])
 
@@ -754,28 +765,32 @@ class Detections:
     def display(self, pprint=False, show=False, save=False, crop=False, render=False, save_dir=Path('')):
         crops = []
         for i, (im, pred) in enumerate(zip(self.imgs, self.pred)):
-            str = f'image {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '
-            if pred is not None:
+            s = f'image {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '  # string
+            if pred.shape[0]:
                 for c in pred[:, -1].unique():
                     n = (pred[:, -1] == c).sum()  # detections per class
-                    str += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                    s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 if show or save or render or crop:
-                    annotator = Annotator(im, pil=not self.ascii)
+                    annotator = Annotator(im, example=str(self.names))
                     for *box, conf, cls in reversed(pred):  # xyxy, confidence, class
                         label = f'{self.names[int(cls)]} {conf:.2f}'
                         if crop:
                             file = save_dir / 'crops' / self.names[int(cls)] / self.files[i] if save else None
-                            crops.append({'box': box, 'conf': conf, 'cls': cls, 'label': label,
-                                          'im': save_one_box(box, im, file=file, save=save)})
+                            crops.append({
+                                'box': box,
+                                'conf': conf,
+                                'cls': cls,
+                                'label': label,
+                                'im': save_one_box(box, im, file=file, save=save)})
                         else:  # all others
-                            annotator.box_label(box, label, color=colors(cls))
-                        im = annotator.im    
+                            annotator.box_label(box, label if labels else '', color=colors(cls))
+                    im = annotator.im
             else:
-                str += '(no detections)'
+                s += '(no detections)'
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
             if pprint:
-                LOGGER.info(str.rstrip(', '))
+                LOGGER.info(s.rstrip(', '))
             if show:
                 im.show(self.files[i])  # show
             if save:
