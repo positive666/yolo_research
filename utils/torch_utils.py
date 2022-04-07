@@ -51,7 +51,7 @@ def device_count():
 
 def select_device(device='', batch_size=0, newline=True):
     # device = 'cpu' or '0' or '0,1,2,3'
-    s = f'YOLOv5 🚀 {git_describe() or file_update_date()} torch {torch.__version__} '  # string
+    s = f'YoloV5-positive666 🚀 🚀 {git_describe() or file_update_date()} torch {torch.__version__} '  # string
     device = str(device).strip().lower().replace('cuda:', '')  # to string, 'cuda:0' to '0'
     cpu = device == 'cpu'
     if cpu:

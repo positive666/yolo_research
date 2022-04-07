@@ -284,7 +284,7 @@ def git_describe(path=ROOT):  # path must be a directory
 @WorkingDirectory(ROOT)
 def check_git_status():
     # Recommend 'git pull' if code is out of date
-    msg = ', for updates see https://github.com/ultralytics/yolov5'
+    msg = ', for updates see https://github.com/positive666/yolov5_research'
     s = colorstr('github: ')  # string
     assert Path('.git').exists(), s + 'skipping check (not a git repository)' + msg
     assert not is_docker(), s + 'skipping check (Docker image)' + msg
