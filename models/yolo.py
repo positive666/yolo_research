@@ -35,8 +35,6 @@ except ImportError:
 
 
 
-
-
 class Detect(nn.Module):
     stride = None  # strides computed during build
     onnx_dynamic = False  # ONNX export parameter
@@ -78,7 +76,7 @@ class Detect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         
-    def _make_grid(nx=20, ny=20, i=0):
+    def _make_grid(self, nx=20, ny=20, i=0):
         d = self.anchors[i].device
         shape = 1, self.na, ny, nx, 2  # grid shape
         if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
@@ -148,7 +146,7 @@ class Decoupled_Detect(nn.Module):
                 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         
-    def _make_grid(nx=20, ny=20, i=0):
+    def _make_grid(self,nx=20, ny=20, i=0):
         d = self.anchors[i].device
         shape = 1, self.na, ny, nx, 2  # grid shape
         if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
@@ -211,7 +209,7 @@ class ASFF_Detect(nn.Module):   #add ASFFV5 layer and Rfb
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
     
-    def _make_grid(nx=20, ny=20, i=0):
+    def _make_grid(self, nx=20, ny=20, i=0):
         d = self.anchors[i].device
         shape = 1, self.na, ny, nx, 2  # grid shape
         if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
