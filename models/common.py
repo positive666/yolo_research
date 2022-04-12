@@ -1070,8 +1070,6 @@ class h_swish(nn.Module):
 class CoordAtt(nn.Module):
     def __init__(self, inp, oup, reduction=32):
         super(CoordAtt, self).__init__()
-        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
-        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
 
         mip = max(8, inp // reduction)
 
@@ -1087,8 +1085,10 @@ class CoordAtt(nn.Module):
         identity = x
         
         n,c,h,w = x.size()
-        x_h = self.pool_h(x)
-        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+        pool_h = nn.AdaptiveAvgPool2d((h, 1))
+        pool_w = nn.AdaptiveAvgPool2d((1, w))
+        x_h = pool_h(x)
+        x_w = pool_w(x).permute(0, 1, 3, 2)
 
         y = torch.cat([x_h, x_w], dim=2)
         y = self.conv1(y)
