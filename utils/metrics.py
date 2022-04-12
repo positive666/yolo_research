@@ -240,7 +240,7 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, EIoU
                 w_dis=torch.pow(b1_x2-b1_x1-b2_x2+b2_x1, 2)
                 h_dis=torch.pow(b1_y2-b1_y1-b2_y2+b2_y1, 2)
                 cw2=torch.pow(cw , 2)+eps
-                ch2=torhc.pow(ch , 2)+eps
+                ch2=torch.pow(ch , 2)+eps
                 return iou-(rho2/c2+w_dis/cw2+h_dis/ch2)
         else:  # GIoU https://arxiv.org/pdf/1902.09630.pdf
             c_area = cw * ch + eps  # convex area
