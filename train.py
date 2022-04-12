@@ -154,7 +154,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     LOGGER.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
     g = [], [], []  # optimizer parameter groups
-    bn = nn.BatchNorm2d, nn.LazyBatchNorm2d, nn.GroupNorm, nn.InstanceNorm2d, nn.LazyInstanceNorm2d, nn.LayerNorm
+    bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
     for v in model.modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias
             g[2].append(v.bias)
@@ -162,7 +162,14 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             g[1].append(v.weight)
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
             g[0].append(v.weight)
-
+        elif hasattr(v, 'w1_weight') and isinstance(v.w1_weight, nn.Parameter) :
+            g[0].append(v.w1_weight)
+        elif hasattr(v, 'w2_weight') and isinstance(v.w2_weight, nn.Parameter) :
+            g[0].append(v.w2_weight)
+        elif hasattr(v,'relative_position_bias_weight') and isinstance(v.relative_position_bias_weight, nn.Parameter) :
+            g[0].append(v.relative_position_bias_weight)
+        elif hasattr(v,'tau') and isinstance(v.tau, nn.Parameter) :
+            g[0].append(v.tau)    
     if opt.optimizer == 'Adam':
         optimizer = Adam(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     elif opt.optimizer == 'AdamW':

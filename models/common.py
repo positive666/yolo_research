@@ -565,8 +565,8 @@ class Concat_bifpn(nn.Module):
     # Concatenate a list of tensors along dimension
     def __init__(self, c1, c2):
         super(Concat_bifpn, self).__init__()
-        self.w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.w1_weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.w2_weight = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
        # self.w3 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
         self.epsilon = 0.0001
         self.conv = Conv(c1, c2, 1 ,1 ,0 )
@@ -575,11 +575,11 @@ class Concat_bifpn(nn.Module):
     def forward(self, x): # mutil-layer 1-3 layers #ADD or Concat 
         #print("bifpn:",x.shape)
         if len(x) == 2:
-            w = self.w1
+            w = self.w1_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act(weight[0] * x[0] + weight[1] * x[1]))
         elif len(x) == 3: 
-            w = self.w2
+            w = self.w2_weight
             weight = w / (torch.sum(w, dim=0) + self.epsilon)
             x = self.conv(self.act (weight[0] * x[0] + weight[1] * x[1] + weight[2] * x[2]))
         # elif len(x) == 4:    
@@ -1115,8 +1115,8 @@ class MHSA(nn.Module):
         self.value = nn.Conv2d(n_dims, n_dims, kernel_size=1)
         self.pos=pos_emb
         if self.pos :
-            self.rel_h = nn.Parameter(torch.randn([1, heads, (n_dims ) // heads, 1, int(height)]), requires_grad=True)
-            self.rel_w = nn.Parameter(torch.randn([1, heads, (n_dims )// heads, int(width), 1]), requires_grad=True)
+            self.rel_h_weight = nn.Parameter(torch.randn([1, heads, (n_dims ) // heads, 1, int(height)]), requires_grad=True)
+            self.rel_w_weight = nn.Parameter(torch.randn([1, heads, (n_dims )// heads, int(width), 1]), requires_grad=True)
         self.softmax = nn.Softmax(dim=-1)
      
     def forward(self, x):
@@ -1130,7 +1130,7 @@ class MHSA(nn.Module):
         c1,c2,c3,c4=content_content.size()
         if self.pos:
        # print("old content_content shape",content_content.shape) #1,4,256,256
-            content_position = (self.rel_h + self.rel_w).view(1, self.heads, C // self.heads, -1).permute(0,1,3,2)   #1,4,1024,64
+            content_position = (self.rel_h_weight + self.rel_w_weight).view(1, self.heads, C // self.heads, -1).permute(0,1,3,2)   #1,4,1024,64
            
             content_position = torch.matmul(content_position, q)# ([1, 4, 1024, 256])
             content_position=content_position if(content_content.shape==content_position.shape)else content_position[:,: , :c3,]
@@ -1467,9 +1467,9 @@ class Global_WindowAttention(nn.Module):
         self.reduction = 32
         self.pre_conv = nn.Conv2d(dim, int(dim//self.reduction), 1)
         # define a parameter table of relative position bias
-        self.relative_position_bias_table = nn.Parameter(
+        self.relative_position_bias_weight = nn.Parameter(
             torch.zeros((2 * self.seq_len - 1) * (2 * self.seq_len - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-        #print(self.relative_position_bias_table.shape)
+        #print(self.relative_position_bias_weight.shape)
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.seq_len)
         coords_w = torch.arange(self.seq_len)
@@ -1494,7 +1494,7 @@ class Global_WindowAttention(nn.Module):
         self.proj = nn.Linear(dim,dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        #trunc_normal_(self.relative_position_bias_table, std=.02)
+        #trunc_normal_(self.relative_position_bias_weight, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, H, W):
@@ -1518,7 +1518,7 @@ class Global_WindowAttention(nn.Module):
         v = kv[1]    
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
-        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+        relative_position_bias = self.relative_position_bias_weight[self.relative_position_index.view(-1)].view(
             self.seq_len * self.seq_len, self.seq_len * self.seq_len, -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         attn = attn + relative_position_bias.unsqueeze(0) 
@@ -1554,7 +1554,7 @@ class WindowAttention(nn.Module):
         #self.scale = head_dim ** -0.5
 
         # define a parameter table of relative position bias
-        self.relative_position_bias_table = nn.Parameter(
+        self.relative_position_bias_weight = nn.Parameter(
             torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # [2*Mh-1 * 2*Mw-1, nH]
         # 获取窗口内每对token的相对位置索引
         # get pair-wise relative position index for each token inside the window
@@ -1580,7 +1580,7 @@ class WindowAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
          
-        nn.init.trunc_normal_(self.relative_position_bias_table, std=.02)
+        nn.init.trunc_normal_(self.relative_position_bias_weight, std=.02)
         self.softmax = nn.Softmax(dim=-1)
           # Init tau
         self.register_parameter("tau", nn.Parameter(torch.zeros(1, num_heads, 1, 1)))
@@ -1640,7 +1640,7 @@ class WindowAttention(nn.Module):
         attn/=self.tau.clamp(min=0.01)
         
         # relative_position_bias_table.view: [Mh*Mw*Mh*Mw,nH] -> [Mh*Mw,Mh*Mw,nH]
-        # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+        # relative_position_bias = self.relative_position_bias_weight[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)
         # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # [nH, Mh*Mw, Mh*Mw]
        # print("net work new positional_enco:",self.__get_relative_positional_encodings().size())
