@@ -1,5 +1,5 @@
 <div align='left'>
-  <img src=https://img.shields.io/github/stars/DefTruth/positive666/yolov5_research.svg?style=social >
+  <img src=https://img.shields.io/github/stars/positive666/yolov5_research.svg?style=social >
   <img src=https://img.shields.io/github/forks/positive666/yolov5_research.svg?style=social >
   <img src=https://img.shields.io/github/watchers/positive666/yolov5_research.svg?style=social>
 </div>
