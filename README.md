@@ -1,8 +1,9 @@
+
 <div align='left'>
   <img src=https://img.shields.io/github/stars/positive666/yolov5_research.svg?style=social >
   <img src=https://img.shields.io/github/forks/positive666/yolov5_research.svg?style=social >
   <img src=https://img.shields.io/github/watchers/positive666/yolov5_research.svg?style=social>
-</div>
+</div> 🌟 🌟 
 
 ### 基于yolov5的改进库(保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！PS：注意层的使用大部分都适合少量数据集和特定业务目标数据集【其实一般的高精度较大模型魔改能提点也很正常，增大了参数量和模型复杂度，这里还要考虑实际情况的泛化问题，至于超大规模探索最优backbone这个其实会受制于硬件资源】目前改普通的骨干难点在于保持性能：更低的FLOPs和网络内存访问速度，靠近于轻量化设计的思路，类似的注意力机制其实没什么动力去做了】，关于消融实验大多来自朋友的热心反馈，自己这边有些业务的，但是没有太大意义且没能在COCO这种数据集对比稳定提升几乎没有说服力，是否把实验结果做个精简展示，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据~)
 
