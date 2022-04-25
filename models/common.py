@@ -696,7 +696,7 @@ class AutoShape(nn.Module):
         #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
 
         t = [time_sync()]
-        p = next(self.model.parameters()) if self.pt else torch.zeros(1)  # for device and type
+        p = next(self.model.parameters()) if self.pt else torch.zeros(1, device=self.model.device)  # for device and type
         autocast = self.amp and (p.device.type != 'cpu')  # Automatic Mixed Precision (AMP) inference
         if isinstance(imgs, torch.Tensor):  # torch
             with amp.autocast(autocast):

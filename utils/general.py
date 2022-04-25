@@ -40,6 +40,7 @@ FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 DATASETS_DIR = ROOT.parent / 'datasets'  # YOLOv5 datasets directory
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
+AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLOv5_VERBOSE', True)).lower() == 'true'  # global verbose mode
 FONT = 'Arial.ttf'  # https://ultralytics.com/assets/Arial.ttf
 
@@ -262,6 +263,7 @@ def file_size(path):
         return 0.0
 
 
+
 def check_online():
     # Check internet connectivity
     import socket
@@ -426,6 +428,7 @@ def check_file(file, suffix=''):
 def check_font(font=FONT):
     # Download font to CONFIG_DIR if necessary
     font = Path(font)
+    file = CONFIG_DIR / font.name
     if not font.exists() and not (CONFIG_DIR / font.name).exists():
         url = "https://ultralytics.com/assets/" + font.name
         LOGGER.info(f'Downloading {url} to {CONFIG_DIR / font.name}...')
@@ -486,7 +489,8 @@ def check_dataset(data, autodownload=True):
                 LOGGER.info(emojis(f"Dataset download {s}"))
             else:
                 raise Exception(emojis('Dataset not found ❌'))
-
+                
+    check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
     return data  # dictionary
 
 
