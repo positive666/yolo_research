@@ -478,28 +478,30 @@ def check_dataset(data, autodownload=True):
     train, val, test, s = (data.get(x) for x in ('train', 'val', 'test', 'download'))
     if val:
         val = [Path(x).resolve() for x in (val if isinstance(val, list) else [val])]  # val path
+        #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         if not all(x.exists() for x in val):
-            LOGGER.info(emojis('\nDataset not found ⚠, missing paths %s' % [str(x) for x in val if not x.exists()]))
-            if not s or not autodownload:
-                raise Exception(emojis('Dataset not found ❌'))
-        t = time.time()
-        root = path.parent if 'path' in data else '..'  # unzip directory i.e. '../'
-        if s.startswith('http') and s.endswith('.zip'):  # URL
-            f = Path(s).name  # filename
-            LOGGER.info(f'Downloading {s} to {f}...')
-            torch.hub.download_url_to_file(s, f)
-            Path(root).mkdir(parents=True, exist_ok=True)  # create root
-            ZipFile(f).extractall(path=root)  # unzip
-            Path(f).unlink()  # remove zip
-            r = None  # success
-        elif s.startswith('bash '):  # bash script
-            OGGER.info(f'Running {s} ...')
-            r = os.system(s)
-        else:  # python script
-            r = exec(s, {'yaml': data})  # return None
-        dt = f'({round(time.time() - t, 1)}s)'
-        s = f"success ✅ {dt}, saved to {colorstr('bold', root)}" if r in (0, None) else f"failure {dt} ❌"
-        LOGGER.info(emojis(f"Dataset download {s}"))       
+        
+            LOGGER.info('\nDataset not found, missing paths: %s' % [str(x) for x in val if not x.exists()])
+            if s and autodownload:  # download script
+                
+                root = path.parent if 'path' in data else '..'  # unzip directory i.e. '../'
+                if s.startswith('http') and s.endswith('.zip'):  # URL
+                    f = Path(s).name  # filename
+                    LOGGER.info(f'Downloading {s} to {f}...')
+                    torch.hub.download_url_to_file(s, f)
+                    Path(root).mkdir(parents=True, exist_ok=True)  # create root
+                    ZipFile(f).extractall(path=root)  # unzip
+                    Path(f).unlink()  # remove zip
+                    r = None  # success
+                elif s.startswith('bash '):  # bash script
+                    LOGGER.info(f'Running {s} ...')
+                    r = os.system(s)
+                else:  # python script
+                    r = exec(s, {'yaml': data})  # return None
+                s = f"success ✅ {dt}, saved to {colorstr('bold', root)}" if r in (0, None) else f"failure {dt} ❌"
+                LOGGER.info(emojis(f"Dataset download {s}"))
+            else:
+                raise Exception('Dataset not found.')
     check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
     return data  # dictionary
 
