@@ -43,6 +43,35 @@ def channel_shuffle(x, groups=2):   ##shuffle channel
         out=out.view(B, C, H, W) 
         return out
         
+        
+class DecoupledHead(nn.Module):
+    def __init__(self, ch=256, nc=80,  anchors=()):
+        super().__init__()
+        self.nc = nc  # number of classes
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.merge = Conv(ch, 256 , 1, 1)
+        self.cls_convs1 = Conv(256 , 256 , 3, 1, 1)
+        self.cls_convs2 = Conv(256 , 256 , 3, 1, 1)
+        self.reg_convs1 = Conv(256 , 256 , 3, 1, 1)
+        self.reg_convs2 = Conv(256 , 256 , 3, 1, 1)
+        self.cls_preds = nn.Conv2d(256 , self.nc * self.na, 1)
+        self.reg_preds = nn.Conv2d(256 , 4 * self.na, 1)
+        self.obj_preds = nn.Conv2d(256 , 1 * self.na, 1)
+
+    def forward(self, x):
+        x = self.merge(x)
+        x1 = self.cls_convs1(x)
+        x1 = self.cls_convs2(x1)
+        x1 = self.cls_preds(x1)
+        x2 = self.reg_convs1(x)
+        x2 = self.reg_convs2(x2)
+        x21 = self.reg_preds(x2)
+        x22 = self.obj_preds(x2)
+        out = torch.cat([x21, x22, x1], 1)
+        return out
+        
+        
 class DetectMultiBackend(nn.Module):
     # YOLOv5 MultiBackend class for python inference on various backends
     def __init__(self, weights='yolov5s.pt', device=torch.device('cpu'), dnn=False, data=None, fp16=False):
