@@ -5,7 +5,6 @@ Logging utils
 
 import os
 import warnings
-from threading import Thread
 
 import pkg_resources as pkg
 import torch
@@ -23,7 +22,7 @@ try:
     import wandb
 
     assert hasattr(wandb, '__version__')  # verify package import not local dir
-    if pkg.parse_version(wandb.__version__) >= pkg.parse_version('0.12.2') and RANK in [0, -1]:
+    if pkg.parse_version(wandb.__version__) >= pkg.parse_version('0.12.2') and RANK in {0, -1}:
         try:
             wandb_login_success = wandb.login(timeout=30)
         except wandb.errors.UsageError:  # known non-TTY terminal issue
@@ -176,7 +175,7 @@ class Loggers():
             if not self.opt.evolve:
                 wandb.log_artifact(str(best if best.exists() else last),
                                    type='model',
-                                   name='run_' + self.wandb.wandb_run.id + '_model',
+                                   name=f'run_{self.wandb.wandb_run.id}_model',
                                    aliases=['latest', 'best', 'stripped'])
             self.wandb.finish_run()
 

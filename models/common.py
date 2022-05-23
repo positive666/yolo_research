@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
 
-from utils.datasets import exif_transpose, letterbox
+from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (LOGGER, check_requirements, check_suffix, check_version, colorstr, increment_path,
                            make_divisible, non_max_suppression, scale_coords, xywh2xyxy, xyxy2xywh)
 from utils.plots import Annotator, colors,save_one_box
@@ -33,7 +33,7 @@ from utils.torch_utils import copy_attr, time_sync
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
-        p = k // 2 if isinstance(k, int) else (x // 2 for x in k)  # auto-pad
+        p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
     
 def channel_shuffle(x, groups=2):   ##shuffle channel 
@@ -352,6 +352,13 @@ class CARAFE(nn.Module):
         out_tensor = self.out(out_tensor)
         #print("up shape:",out_tensor.shape)
         return out_tensor
+
+
+class DWConvTranspose2d(nn.ConvTranspose2d):
+    # Depth-wise transpose convolution class
+    def __init__(self, c1, c2, k=1, s=1, p1=0, p2=0):  # ch_in, ch_out, kernel, stride, padding, padding_out
+        super().__init__(c1, c2, k, s, p1, p2, groups=math.gcd(c1, c2))
+        
         
 class TransformerLayer(nn.Module):
     # Transformer layer https://arxiv.org/abs/2010.11929 (LayerNorm layers removed for better performance)
@@ -435,6 +442,19 @@ class BottleneckCSP(nn.Module):
         y2 = self.cv2(x)
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), 1))))
 
+class CrossConv(nn.Module):
+    # Cross Convolution Downsample
+    def __init__(self, c1, c2, k=3, s=1, g=1, e=1.0, shortcut=False):
+        # ch_in, ch_out, kernel, stride, groups, expansion, shortcut
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, (1, k), (1, s))
+        self.cv2 = Conv(c_, c2, (k, 1), (s, 1), g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
 
 class C3(nn.Module):
     # CSP Bottleneck with 3 convolutions 
@@ -445,10 +465,17 @@ class C3(nn.Module):
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
         self.m = nn.Sequential(*((InvolutionBottleneck(c_, c_, shortcut, g, e=1.0) if(Involution) else Bottleneck(c_, c_, shortcut, g, e=1.0) )for _ in range(n))) 
-        # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
-
+      
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
+
+
+class C3x(C3):
+    # C3 module with cross-convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)))
 
 
 class C3TR(C3):
@@ -664,9 +691,10 @@ class AutoShape(nn.Module):
     max_det = 1000  # maximum number of detections per image
     amp = False  # Automatic Mixed Precision (AMP) inference
     
-    def __init__(self, model):
+    def __init__(self, model, verbose=True):
         super().__init__()
-        LOGGER.info('Adding AutoShape... ')
+        if verbose:
+            LOGGER.info('Adding AutoShape... ')
         copy_attr(self, model, include=('yaml', 'nc', 'hyp', 'names', 'stride', 'abc'), exclude=())  # copy attributes
         self.dmb = isinstance(model, DetectMultiBackend)  # DetectMultiBackend() instance
         self.pt = not self.dmb or model.pt  # PyTorch model
