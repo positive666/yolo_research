@@ -448,9 +448,8 @@ def check_font(font=FONT, progress=False):
 
 
 def check_dataset(data, autodownload=True):
-    # Download and/or unzip dataset if not found locally
-    # Usage: https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128_with_yaml.zip
-    
+    # Download, check and/or unzip dataset if not found locally
+
     # Download (optional)
     extract_dir = ''
     if isinstance(data, (str, Path)) and str(data).endswith('.zip'):  # i.e. gs://bucket/dir/coco128.zip
@@ -463,6 +462,13 @@ def check_dataset(data, autodownload=True):
         with open(data, errors='ignore') as f:
             data = yaml.safe_load(f)  # dictionary
             
+    # Checks
+    for k in 'train', 'val', 'nc':
+        assert k in data, emojis(f"data.yaml '{k}:' field missing ❌")
+    if 'names' not in data:
+        LOGGER.warning(emojis("data.yaml 'names:' field missing ⚠, assigning default names 'class0', 'class1', etc."))
+        data['names'] = [f'class{i}' for i in range(data['nc'])]  # default names
+        
     # Resolve paths
     path = Path(extract_dir or data.get('path') or '')  # optional 'path' default to '.'
     if not path.is_absolute():
@@ -472,16 +478,12 @@ def check_dataset(data, autodownload=True):
             data[k] = str(path / data[k]) if isinstance(data[k], str) else [str(path / x) for x in data[k]]
             
     # Parse yaml
-    assert 'nc' in data, "Dataset 'nc' key missing."
-    if 'names' not in data:
-        data['names'] = [f'class{i}' for i in range(data['nc'])]  # assign class names if missing
     train, val, test, s = (data.get(x) for x in ('train', 'val', 'test', 'download'))
     if val:
         val = [Path(x).resolve() for x in (val if isinstance(val, list) else [val])]  # val path
-        #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         if not all(x.exists() for x in val):
-        
-            LOGGER.info('\nDataset not found, missing paths: %s' % [str(x) for x in val if not x.exists()])
+            LOGGER.info('\nDataset not found ⚠,missing paths: %s' % [str(x) for x in val if not x.exists()])
+            t = time.time()
             if s and autodownload:  # download script
                 
                 root = path.parent if 'path' in data else '..'  # unzip directory i.e. '../'
@@ -498,10 +500,11 @@ def check_dataset(data, autodownload=True):
                     r = os.system(s)
                 else:  # python script
                     r = exec(s, {'yaml': data})  # return None
+                dt = f'({round(time.time() - t, 1)}s)'    
                 s = f"success ✅ {dt}, saved to {colorstr('bold', root)}" if r in (0, None) else f"failure {dt} ❌"
                 LOGGER.info(emojis(f"Dataset download {s}"))
             else:
-                raise Exception('Dataset not found.')
+                raise Exception('Dataset not found ❌❌❌❌.')
     check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
     return data  # dictionary
 
