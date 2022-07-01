@@ -133,8 +133,12 @@ class DetectMultiBackend(nn.Module):
             core = ie.IECore()
             if not Path(w).is_file():  # if not *.xml
                 w = next(Path(w).glob('*.xml'))  # get *.xml file from *_openvino_model dir
-            network = core.read_network(model=w, weights=Path(w).with_suffix('.bin'))  # *.xml, *.bin paths
-            executable_network = core.load_network(network, device_name='CPU', num_requests=1)
+            network = ie.read_model(model=w, weights=Path(w).with_suffix('.bin'))
+            executable_network = ie.compile_model(network, device_name="CPU")  # device_name="MYRIAD" for Intel NCS2
+            output_layer = next(iter(executable_network.outputs))
+            meta = Path(w).with_suffix('.yaml')
+            if meta.exists():
+                stride, names = self._load_metadata(meta)  # load metadata
         elif engine:  # TensorRT
             LOGGER.info(f'Loading {w} for TensorRT inference...')
             import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
