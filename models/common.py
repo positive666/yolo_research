@@ -827,7 +827,7 @@ class Detections:
         self.t = tuple((times[i + 1] - times[i]) * 1000 / self.n for i in range(3))  # timestamps (ms)
         self.s = shape  # inference BCHW shape
 
-    def display(self, pprint=False, show=False, save=False, crop=False, render=False, save_dir=Path('')):
+    def display(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path('')):
         crops = []
         for i, (im, pred) in enumerate(zip(self.imgs, self.pred)):
             s = f'image {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '  # string
@@ -875,19 +875,19 @@ class Detections:
         LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {tuple(self.s)}' %
                     self.t)
 
-    def show(self):
-        self.display(show=True)  # show results
+    def show(self, labels=True):
+        self.display(show=True, labels=labels)  # show results
 
-    def save(self, save_dir='runs/detect/exp'):
+    def save(self, labels=True, save_dir='runs/detect/exp'):
         save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True)  # increment save_dir
-        self.display(save=True, save_dir=save_dir)  # save results
+        self.display(save=True, labels=labels, save_dir=save_dir)  # save results
 
-    def crop(self, save_dir='runs/detect/exp'):
+    def crop(self, save=True, save_dir='runs/detect/exp'):
         save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True) if save else None
-        LOGGER.info(f'Saved results to {save_dir}\n')
+        return self.display(crop=True, save=save, save_dir=save_dir)  # crop results
 
-    def render(self):
-        self.display(render=True)  # render results
+    def render(self, labels=True):
+        self.display(render=True, labels=labels)  # render results
         return self.imgs
 
     def pandas(self):
