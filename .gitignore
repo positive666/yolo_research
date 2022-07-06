@@ -20,12 +20,17 @@
 *.data
 *.json
 *.cfg
+!setup.cfg
 !cfg/yolov3*.cfg
 
 storage.googleapis.com
 runs/*
 data/*
-!data/hyps/*
+data/images/*
+!data/*.yaml
+!data/hyps
+!data/scripts
+!data/images
 !data/images/zidane.jpg
 !data/images/bus.jpg
 !data/*.sh
@@ -45,9 +50,16 @@ VOC/
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
 *.pt
+*.pb
 *.onnx
+*.engine
 *.mlmodel
 *.torchscript
+*.tflite
+*.h5
+*_saved_model/
+*_web_model/
+*_openvino_model/
 darknet53.conv.74
 yolov3-tiny.conv.15
 
@@ -76,7 +88,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
-wandb/
+/wandb/
 .installed.cfg
 *.egg
 
@@ -242,3 +254,4 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+Footer
