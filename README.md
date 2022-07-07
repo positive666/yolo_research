@@ -7,7 +7,9 @@
 
 ##  🌟 基于yolov5&&yolov7的改进库
 
-based on yolov5 && yolov7(https://github.com/WongKinYiu/yolov7.git)，简单来说V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
+based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   
+
+简单来说,V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
 ***
 (保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据~)
 
