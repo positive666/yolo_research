@@ -42,7 +42,7 @@ from utils.general import (LOGGER, check_dataset, check_img_size, check_requirem
                            scale_coords, xywh2xyxy, xyxy2xywh)
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
-from utils.torch_utils import select_device, time_sync
+from utils.torch_utils import select_device, time_sync, TracedModel
 
 
 def save_one_txt(predn, save_conf, shape, file):
@@ -138,6 +138,9 @@ def run(
 
         # Load model
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
+        if trace:
+            model = TracedModel(model, device, opt.img_size)  # yolov5 import Tracemodel
+
         stride, pt, jit, engine = model.stride, model.pt, model.jit, model.engine
         imgsz = check_img_size(imgsz, s=stride)  # check image size
         half = model.fp16  # FP16 supported on limited backends with CUDA
@@ -148,7 +151,7 @@ def run(
             if not (pt or jit):
                 batch_size = 1  # export.py models default to batch-size 1
                 LOGGER.info(f'Forcing --batch-size 1 square inference (1,3,{imgsz},{imgsz}) for non-PyTorch models')
-
+        
         # Data
         data = check_dataset(data)  # check
 
@@ -350,6 +353,7 @@ def parse_opt():
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--trace', action='store_true', help='trace model')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')
