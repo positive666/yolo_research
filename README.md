@@ -7,7 +7,7 @@
 
 ##  🌟 基于yolov5&&yolov7的改进库
 
-based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   
+based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 CoCo weights:链接：https://pan.baidu.com/s/140E6siM_yoBG5OSxe9jeeQ?pwd=v7v7 提取码：v7v7
 
 简单来说,V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
 ***
@@ -64,6 +64,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)
 ***
 
 
+   
    
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
