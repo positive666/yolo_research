@@ -65,6 +65,11 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 Co
 
 
    
+##run 
+       
+      1.python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)
+	  if your run old swin2 ,add --swin_float
+	    
    
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
