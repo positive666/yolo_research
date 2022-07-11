@@ -67,6 +67,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.ota_loss
     callbacks.run('on_pretrain_routine_start')
     
+    compute_loss_ota=None 
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
@@ -358,10 +359,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     if ota_loss:
-       compute_loss_ota = ComputeLossOTA(model)  # init loss class 
+        compute_loss_ota = ComputeLossOTA(model)  # init loss class 
     
     stopper = EarlyStopping(patience=opt.patience)
-    #compute_loss_ota = ComputeLossOTA(model)  # init loss class
     compute_loss = ComputeLoss(model)  # init loss class
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
