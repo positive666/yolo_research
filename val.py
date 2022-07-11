@@ -141,7 +141,6 @@ def run(
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
         if trace:
             model = TracedModel(model, device, opt.img_size)  # yolov5 import Tracemodel
-
         stride, pt, jit, engine = model.stride, model.pt, model.jit, model.engine
         imgsz = check_img_size(imgsz, s=stride)  # check image size
         half = model.fp16  # FP16 supported on limited backends with CUDA
@@ -231,7 +230,7 @@ def run(
 
             if npr == 0:
                 if nl:
-                    stats.append((correct, *torch.zeros((3, 0), device=device)))
+                    stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0]))
                 continue
 
             # Predictions

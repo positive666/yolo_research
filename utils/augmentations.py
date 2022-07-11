@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5_research from yolov5 and yolov7, GPL-3.0 license
 """
 Image augmentation functions
 """
@@ -266,6 +266,64 @@ def cutout(im, labels, p=0.5):
                 labels = labels[ioa < 0.60]  # remove >60% obscured labels
 
     return labels
+
+def pastein(image, labels, sample_labels, sample_images, sample_masks):
+    # Applies image cutout augmentation https://arxiv.org/abs/1708.04552  from yolov7  https://github.com/WongKinYiu/yolov7/blob/main/utils/datasets.py
+    h, w = image.shape[:2]
+
+    # create random masks
+    scales = [0.75] * 2 + [0.5] * 4 + [0.25] * 4 + [0.125] * 4 + [0.0625] * 6  # image size fraction
+    for s in scales:
+        if random.random() < 0.2:
+            continue
+        mask_h = random.randint(1, int(h * s))
+        mask_w = random.randint(1, int(w * s))
+
+        # box
+        xmin = max(0, random.randint(0, w) - mask_w // 2)
+        ymin = max(0, random.randint(0, h) - mask_h // 2)
+        xmax = min(w, xmin + mask_w)
+        ymax = min(h, ymin + mask_h)   
+        
+        box = np.array([xmin, ymin, xmax, ymax], dtype=np.float32)
+        if len(labels):
+            ioa = bbox_ioa(box, labels[:, 1:5])  # intersection over area     
+        else:
+            ioa = np.zeros(1)
+        
+        if (ioa < 0.30).all() and len(sample_labels) and (xmax > xmin+20) and (ymax > ymin+20):  # allow 30% obscuration of existing labels
+            sel_ind = random.randint(0, len(sample_labels)-1)
+            #print(len(sample_labels))
+            #print(sel_ind)
+            #print((xmax-xmin, ymax-ymin))
+            #print(image[ymin:ymax, xmin:xmax].shape)
+            #print([[sample_labels[sel_ind], *box]])
+            #print(labels.shape)
+            hs, ws, cs = sample_images[sel_ind].shape
+            r_scale = min((ymax-ymin)/hs, (xmax-xmin)/ws)
+            r_w = int(ws*r_scale)
+            r_h = int(hs*r_scale)
+            
+            if (r_w > 10) and (r_h > 10):
+                r_mask = cv2.resize(sample_masks[sel_ind], (r_w, r_h))
+                r_image = cv2.resize(sample_images[sel_ind], (r_w, r_h))
+                temp_crop = image[ymin:ymin+r_h, xmin:xmin+r_w]
+                m_ind = r_mask > 0
+                if m_ind.astype(np.int).sum() > 60:
+                    temp_crop[m_ind] = r_image[m_ind]
+                    #print(sample_labels[sel_ind])
+                    #print(sample_images[sel_ind].shape)
+                    #print(temp_crop.shape)
+                    box = np.array([xmin, ymin, xmin+r_w, ymin+r_h], dtype=np.float32)
+                    if len(labels):
+                        labels = np.concatenate((labels, [[sample_labels[sel_ind], *box]]), 0)
+                    else:
+                        labels = np.array([[sample_labels[sel_ind], *box]])
+                              
+                    image[ymin:ymin+r_h, xmin:xmin+r_w] = temp_crop
+
+    return labels
+
 
 
 def mixup(im, labels, im2, labels2):

@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+
 # Hyperparameters for VOC finetuning
 # python train.py --batch 64 --weights yolov5m.pt --data VOC.yaml --img 512 --epochs 50
 # See tutorials for hyperparameter evolution https://github.com/ultralytics/yolov5#tutorials
@@ -37,3 +37,4 @@ fliplr: 0.5
 mosaic: 1.0
 mixup: 0.243
 copy_paste: 0.0
+paste_in: 0.0
