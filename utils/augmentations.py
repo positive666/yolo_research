@@ -267,6 +267,38 @@ def cutout(im, labels, p=0.5):
 
     return labels
 
+def sample_segments(img, labels, segments, probability=0.5):
+    # Implement Copy-Paste augmentation https://arxiv.org/abs/2012.07177, labels as nx5 np.array(cls, xyxy)
+    n = len(segments)
+    sample_labels = []
+    sample_images = []
+    sample_masks = []
+    if probability and n:
+        h, w, c = img.shape  # height, width, channels
+        for j in random.sample(range(n), k=round(probability * n)):
+            l, s = labels[j], segments[j]
+            box = l[1].astype(int).clip(0,w-1), l[2].astype(int).clip(0,h-1), l[3].astype(int).clip(0,w-1), l[4].astype(int).clip(0,h-1) 
+            
+            #print(box)
+            if (box[2] <= box[0]) or (box[3] <= box[1]):
+                continue
+            
+            sample_labels.append(l[0])
+            
+            mask = np.zeros(img.shape, np.uint8)
+            
+            cv2.drawContours(mask, [segments[j].astype(np.int32)], -1, (255, 255, 255), cv2.FILLED)
+            sample_masks.append(mask[box[1]:box[3],box[0]:box[2],:])
+            
+            result = cv2.bitwise_and(src1=img, src2=mask)
+            i = result > 0  # pixels to replace
+            mask[i] = result[i]  # cv2.imwrite('debug.jpg', img)  # debug
+            #print(box)
+            sample_images.append(mask[box[1]:box[3],box[0]:box[2],:])
+
+    return sample_labels, sample_images, sample_masks
+
+
 def pastein(image, labels, sample_labels, sample_images, sample_masks):
     # Applies image cutout augmentation https://arxiv.org/abs/1708.04552  from yolov7  https://github.com/WongKinYiu/yolov7/blob/main/utils/datasets.py
     h, w = image.shape[:2]

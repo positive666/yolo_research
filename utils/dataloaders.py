@@ -26,7 +26,7 @@ from PIL import ExifTags, Image, ImageOps
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 
-from utils.augmentations import Albumentations, augment_hsv, copy_paste, letterbox, mixup, random_perspective, pastein
+from utils.augmentations import Albumentations, augment_hsv, copy_paste, letterbox, mixup, random_perspective, pastein, sample_segments
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, check_dataset, check_requirements, check_yaml, clean_str,
                            cv2, segments2boxes, xyn2xy, xywh2xyxy, xywhn2xyxy, xyxy2xywhn,resample_segments)
 from utils.torch_utils import torch_distributed_zero_first
@@ -623,7 +623,7 @@ class LoadImagesAndLabels(Dataset):
             if random.random() < hyp['paste_in']:
                 sample_labels, sample_images, sample_masks = [], [], [] 
                 while len(sample_labels) < 30:
-                    sample_labels_, sample_images_, sample_masks_ = self.load_samples(self, random.randint(0, len(self.labels) - 1))
+                    sample_labels_, sample_images_, sample_masks_ = self.load_samples(random.randint(0, len(self.labels) - 1))
                     sample_labels += sample_labels_
                     sample_images += sample_images_
                     sample_masks += sample_masks_
@@ -840,7 +840,7 @@ class LoadImagesAndLabels(Dataset):
         indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
         for i, index in enumerate(indices):
             # Load image
-            img, _, (h, w) = load_image(self, index)
+            img, _, (h, w) = self.load_image(index)
 
             # place img in img4
             if i == 0:  # top left
