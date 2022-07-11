@@ -64,7 +64,7 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze,ota-loss = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.ota-loss
     callbacks.run('on_pretrain_routine_start')
     
     # Directories
@@ -357,10 +357,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
-    # if ota-loss:
-        # compute_loss_ota = ComputeLossOTA(model)  # init loss class 
+    if ota-loss:
+       compute_loss_ota = ComputeLossOTA(model)  # init loss class 
     
     stopper = EarlyStopping(patience=opt.patience)
+    #compute_loss_ota = ComputeLossOTA(model)  # init loss class
     compute_loss = ComputeLoss(model)  # init loss class
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -416,7 +417,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device), imgs)  # loss scaled by batch_size # loss scaled by batch_size
+                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_siz
+                #loss, loss_items = compute_loss(pred, targets.to(device), imgs)  # loss scaled by batch_size # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
