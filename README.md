@@ -67,7 +67,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 Co
 
 
    
-##run 
+##  Run 
        
 	  ### run yolov7-P5 model train and yolov5 seriese models :
 	  
