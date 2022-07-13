@@ -32,6 +32,8 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 Co
 ***
 最近更新：
 
+- 2022/7/13  同步更新加入了yolov7的P6模型訓練部分代碼，p6是需要aux的所以需要添加Loss部分計算，代碼和CSDN持續更新中
+
 - 2022/7/7   依旧全网首发 ：以目前仓库的魔改版V5为基准同步了YOLOV7的核心改动，代码风格是最新的，后续会持续完善优化，完美融合V7，后续博客争取更新第一时间！
 
 - 2022/5/23  合并更新了YOLOV5仓库的最新版本，作者代码有点小问题就是数据集会重复下载，这部分我没就没合并他的更新，引入了新的算子，看来他也在探索实验
@@ -67,10 +69,15 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 Co
    
 ##run 
        
+	  ### run yolov7-P5 model train and yolov5 seriese models :
+	  
       1.python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)
 	  if your run old swin2 ,add --swin_float
-	    
-   
+	  
+	  ### run yolov7-aux model train ,your model must P6-model !
+	  
+	  2.python train.py  --cfg  models/v7_cfg/training/yolov7e6e.yaml  --weights yolov7.pt  --data (custom datasets)  --aux_ota_loss
+	  
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
   [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
