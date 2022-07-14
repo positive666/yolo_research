@@ -7,11 +7,11 @@
 
 ##  🌟 基于yolov5&&yolov7的改进库
 
-based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 CoCo weights:链接：https://pan.baidu.com/s/140E6siM_yoBG5OSxe9jeeQ?pwd=v7v7 提取码：v7v7
+based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7 提取码：v7v7
 
 简单来说,V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
 ***
-(保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据~)
+(保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据和結果~)
 
 对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；
 而且transfromer是很难发生过拟合或者说不存在，其实实际操作中，这些改动没有质变，最实在的还是你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性。
@@ -69,14 +69,14 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 Co
    
 ##  Run 
        
-	  ### run yolov7-P5 model train and yolov5 seriese models :
+	  ### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
-      1.python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)
+      python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
 	  if your run old swin2 ,add --swin_float
 	  
-	  ### run yolov7-aux model train ,your model must P6-model !
+	  ### 2. run yolov7-aux model train ,your model must P6-model !
 	  
-	  2.python train.py  --cfg  models/v7_cfg/training/yolov7e6e.yaml  --weights yolov7.pt  --data (custom datasets)  --aux_ota_loss
+    	python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
 	  
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
