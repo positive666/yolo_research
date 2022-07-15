@@ -650,6 +650,37 @@ class C3SPP(C3):
         self.m = SPP(c_, c_, k)
 
 
+class Stem(nn.Module):
+    # Stem
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super(Stem, self).__init__()
+        c_ = int(c2/2)  # hidden channels
+        self.cv1 = Conv(c1, c_, 3, 2)
+        self.cv2 = Conv(c_, c_, 1, 1)
+        self.cv3 = Conv(c_, c_, 3, 2)
+        self.pool = torch.nn.MaxPool2d(2, stride=2)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+
+    def forward(self, x):
+        x = self.cv1(x)
+        return self.cv4(torch.cat((self.cv3(self.cv2(x)), self.pool(x)), dim=1))
+
+
+class DownC(nn.Module):
+    # Spatial pyramid pooling layer used in YOLOv3-SPP
+    def __init__(self, c1, c2, n=1, k=2):
+        super(DownC, self).__init__()
+        c_ = int(c1)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2//2, 3, k)
+        self.cv3 = Conv(c1, c2//2, 1, 1)
+        self.mp = nn.MaxPool2d(kernel_size=k, stride=k)
+
+    def forward(self, x):
+        return torch.cat((self.cv2(self.cv1(x)), self.cv3(self.mp(x))), dim=1)
+
+
+
 class C3Ghost(C3):
     # C3 module with GhostBottleneck()
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
