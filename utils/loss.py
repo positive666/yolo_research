@@ -548,7 +548,7 @@ class ComputeLossOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
@@ -867,7 +867,7 @@ class ComputeLossBinOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
@@ -1313,7 +1313,7 @@ class ComputeLossAuxOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
@@ -1366,7 +1366,7 @@ class ComputeLossAuxOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
