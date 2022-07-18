@@ -27,6 +27,7 @@ from utils.general import LOGGER, check_version, check_yaml, make_divisible, pri
 from utils.plots import feature_visualization
 from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
                                time_sync)
+from utils.loss import SigmoidBin
 
 try:
     import thop  # for FLOPs computation
