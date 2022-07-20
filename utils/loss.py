@@ -193,7 +193,10 @@ class ComputeLoss:
 
         # Focal loss
         g = h['fl_gamma']  # focal loss gamma
-        self.g2=h['fl_eiou_gamma'] # focal eiou loss gamma
+        try :
+            self.g2=h['fl_eiou_gamma'] # focal eiou loss gamma
+        except:
+            print('check your hyperparameters yaml')
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
     
@@ -225,9 +228,10 @@ class ComputeLoss:
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target) 
-                if self.g2>0  :# Focal-EIOU https://arxiv.org/abs/2101.08158  if your need Fcal-EIOU , CIOU--->EIOU=True  
-                    lbox += ((bbox_iou(pbox, tbox[i], xywh=False)** self.g2)*(1 - iou)).mean() 
-                else:   
+                try: #fix 
+                    if self.g2>0  :# Focal-EIOU https://arxiv.org/abs/2101.08158  if your need Fcal-EIOU , CIOU--->EIOU=True  
+                        lbox += ((bbox_iou(pbox, tbox[i], xywh=False)** self.g2)*(1 - iou)).mean() 
+                except:   
                     lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness

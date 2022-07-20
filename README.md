@@ -10,6 +10,7 @@
 based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
 
 简单来说,V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
+
 ***
 (保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据和結果~)
 
@@ -77,6 +78,11 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 	  ### 2. run yolov7-aux model train ,your model must P6-model !
 	  
     	python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
+		
+		1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
+		2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
+		
+
 	  
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
