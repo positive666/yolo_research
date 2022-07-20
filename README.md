@@ -9,15 +9,15 @@
 
 based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
 
-简单来说,V7是V5的一次扩充版本，吸收了类似nanodet的辅助分支思路等优化和实验出的网络结构。
-
+简单来说,V7是V5的一次扩充版本,详情可以看：
+[CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
 ***
 (保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据和結果~)
 
 对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；
 而且transfromer是很难发生过拟合或者说不存在，其实实际操作中，这些改动没有质变，最实在的还是你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性。
 ***
-主要是对于工作以业务落地为主的我来说，在V5的仓库上进行尝试改动工作，结果无论如何，都是借鉴学习而已，更多的是兴趣，所以不改项目名，如何改进都是锦上添花和学习探索，只FORK，业余兴趣基于Yolov5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
+基于Yolov5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
 声明：这一年里有很多朋友用修改的idea方式以及注意力和设计结构去做Paper，不用咨询我意见：一切free！有成效自己论文开源随便，与我无关，只是希望各位能把实验数据反馈给我，因为平时工作业务比较忙，实验的时间不够。也是借此目的来和大家一起学习交流。
 ***
 任何技术都要讲究：时序性，所以要不断学习不断业务工程，保持自己的状态！
@@ -51,7 +51,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 - 2022/6/20  跟作者更新的代码进行了一些更新和合并，最近在做人体姿态，有问题可以先挂issue
 - 2022/4/12  1.修复了一些常规的问题BUG并合并了V5作者的最新代码更新，大概包含之前缺少了一些可学习参数和代码优化,如添加了swintransformerV2.0的相对位置编码加入优化器等。 2.目前看来GAM换用组卷积效果有待商榷，后续进一步整理消融实验总结。
 - 2022/3/16  对上传的GAM注意力层进行了简单的实验，yolov5s+GAM在Visdrone数据集上的结果举例参考，后续的话其实难点在于轻量化，探究大模型的骨干估计只有大厂研究资源能有成本去做。
-- 2022/3/5   近期会整理一些去年的实验数据///使用swin2的骨干，超参数需要调试一下，首先要稍微减低学习率，使用AdM,；也可以把SWIN层作为注意力插件训练，这个和以往的操作类似，不再赘述了 需要开启--swin_float   命令参数，因为点积不被cuda的half支持，而优化器的问题，那么问题基本就是较多的swin block 堆积导致的增量更新。同时伴随着GPU的开销。 
+- 2022/3/5   近期会整理一些去年的实验数据/、使用swin2的骨干，超参数需要调试一下，首先要稍微减低学习率，（实测SGD）；也可以把SWIN层作为注意力插件训练，这个和以往的操作类似，不再赘述了 需要开启--swin_float   命令参数，因为点积不被cuda的half支持，而优化器的问题，那么问题基本就是较多的swin block 堆积导致的增量更新。同时伴随着GPU的开销。 
 - 2022/3.1   （不完整更新,供参考，怕忙断更，所以先放出部分修改，目前还在动态调试中）按照SWintransformerV2.0 的改进点：修改了NORM层的位置/attention将dot换成scaled cosine self-attention，待更新的优化部分：1.序列窗口注意力计算，降低显存开销 2、训练优化器
 - 2022/2.28  添加了一个Swintransformer的Backbone和yaml示意结构，很多人把SWIN还像之前做成注意力层，但是其实swin设计是为了摒弃CNN去和NLP一统，而且精髓在于控制计算复杂度，其实backbone的全替换也许更值得尝试 ，内存开销和结构设计待优化
 - 2022/2.22  忙里抽闲：更新了今天的yolov5的工程修复，修改了解耦头的代码风格，直接yaml选择参考使用，服务器回滚了代码。SWIN算子在，YAML文件丢失了，找时间从新写一个再上传，太忙看更新可能优先GIT，等有空博客细致归纳下
@@ -70,17 +70,18 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
    
 ##  Run 
        
-	  ### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
+	### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
-	  if your run old swin2 ,add --swin_float
 	  
-	  ### 2. run yolov7-aux model train ,your model must P6-model !
+	  # if your run old swin2 ,add --swin_float
+	  
+	### 2. run yolov7-aux model train ,your model must P6-model !
 	  
     	python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
 		
-		1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
-		2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
+	## 1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
+	## 2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
 		
 
 	  
