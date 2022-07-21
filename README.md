@@ -47,7 +47,8 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 	| YOLOv5s+GAM 		 |   0.35    |  0.194    |     22.2      | 36.9   |
 	| YOLOv5s_decoup     |   0.367   |  0.203    |     7.1       | 17.2   |
     | YOLOv5s_GAM_group   |  0.353  	|  0.192 	 |     11       | 21.4   |  （待进一步更新）
-	
+
+- 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
 - 2022/6/20  跟作者更新的代码进行了一些更新和合并，最近在做人体姿态，有问题可以先挂issue
 - 2022/4/12  1.修复了一些常规的问题BUG并合并了V5作者的最新代码更新，大概包含之前缺少了一些可学习参数和代码优化,如添加了swintransformerV2.0的相对位置编码加入优化器等。 2.目前看来GAM换用组卷积效果有待商榷，后续进一步整理消融实验总结。
 - 2022/3/16  对上传的GAM注意力层进行了简单的实验，yolov5s+GAM在Visdrone数据集上的结果举例参考，后续的话其实难点在于轻量化，探究大模型的骨干估计只有大厂研究资源能有成本去做。
@@ -70,19 +71,19 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
    
 ##  Run 
        
-	### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
+ ### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
 	  
-	  # if your run old swin2 ,add --swin_float
+	  # if your run Custom swinV2 ,add --swin_float
 	  
 	### 2. run yolov7-aux model train ,your model must P6-model !
 	  
-    	python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
+      python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
 		
 	## 1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
 	## 2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
-		
+	see reparameterization.py	
 
 	  
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
