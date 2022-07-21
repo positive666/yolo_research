@@ -26,7 +26,7 @@ RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 try:
-    import thop  # for FLOPs computation
+    import thop  # for FLOPs computationf
 except ImportError:
     thop = None
 
@@ -350,9 +350,9 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, weight_decay=1e-
             if hasattr(v.rbr_dense, 'vector'):   
                 g[0].append(v.rbr_dense.vector)  
                 
-    if optimizer == 'Adam':
+    if name == 'Adam':
         optimizer = Adam(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
-    elif optimizer == 'AdamW':
+    elif name == 'AdamW':
         optimizer = AdamW(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     elif name == 'RMSProp':
         optimizer = torch.optim.RMSprop(g[2], lr=lr, momentum=momentum)
