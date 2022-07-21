@@ -350,9 +350,9 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, weight_decay=1e-
             if hasattr(v.rbr_dense, 'vector'):   
                 g[0].append(v.rbr_dense.vector)  
                 
-    if opt.optimizer == 'Adam':
+    if optimizer == 'Adam':
         optimizer = Adam(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
-    elif opt.optimizer == 'AdamW':
+    elif optimizer == 'AdamW':
         optimizer = AdamW(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     elif name == 'RMSProp':
         optimizer = torch.optim.RMSprop(g[2], lr=lr, momentum=momentum)
