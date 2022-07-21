@@ -63,9 +63,9 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze,aux_ota_loss = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze,aux_ota_loss,ota_match = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.aux_ota_loss
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.aux_ota_loss,opt.ota_match
     callbacks.run('on_pretrain_routine_start')
     
     compute_loss_ota=None 
@@ -275,7 +275,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     if aux_ota_loss:
         compute_loss_ota = ComputeLossAuxOTA(model)  # init loss class 
-    else:
+    elif ota_match:
         compute_loss_ota = ComputeLossOTA(model)
     stopper = EarlyStopping(patience=opt.patience)
     compute_loss = ComputeLoss(model)  # init loss class
@@ -333,7 +333,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if aux_ota_loss else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
+                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if (compute_loss_ota is not None )else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
                 #loss, loss_items = compute_loss(pred, targets.to(device), imgs)  # loss scaled by batch_size # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
@@ -503,6 +503,7 @@ def parse_opt(known=False):
     # swin float()
     parser.add_argument('--swin_float', action='store_true', help='swin not use half to train/Val')
     parser.add_argument('--aux_ota_loss', action='store_true', help='swin not use half to train/Val')
+    parser.add_argument('--ota_match', action='store_true', help='swin not use half to train/Val'
     opt = parser.parse_known_args()[0] if known else parser.parse_args()
     return opt
 

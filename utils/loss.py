@@ -9,7 +9,7 @@ import torch.nn as nn
 from utils.general import xywh2xyxy
 from utils.metrics import bbox_iou,box_iou
 from utils.torch_utils import de_parallel
-
+import torch.nn.functional as F
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
@@ -367,7 +367,7 @@ class ComputeLossOTA:
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 selected_tbox = targets[i][:, 2:6] * pre_gen_gains[i]
                 selected_tbox[:, :2] -= grid
-                iou = bbox_iou(pbox, selected_tbox, CIoU=True)  # iou(prediction, target)
+                iou = bbox_iou(pbox, selected_tbox, CIoU=True)[0] # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
@@ -681,7 +681,7 @@ class ComputeLossBinOTA:
 
                 
                
-                iou = bbox_iou(pbox, selected_tbox, CIoU=True)  # iou(prediction, target)
+                iou = bbox_iou(pbox, selected_tbox, CIoU=True)[0] # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
@@ -974,46 +974,55 @@ class ComputeLossAuxOTA:
             tobj_aux = torch.zeros_like(pi_aux[..., 0], device=device)  # target obj
 
             n = b.shape[0]  # number of targets
-            n_aux = b_aux.shape[0]  # number of targets
             if n:
                 ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
-                ps_aux = pi_aux[b_aux, a_aux, gj_aux, gi_aux]  # prediction subset corresponding to targets
 
                 # Regression
                 grid = torch.stack([gi, gj], dim=1)
-                grid_aux = torch.stack([gi_aux, gj_aux], dim=1)
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
-                pxy_aux = ps_aux[:, :2].sigmoid() * 2. - 0.5
-                #pxy = ps[:, :2].sigmoid() * 3. - 1.
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-                pwh_aux = (ps_aux[:, 2:4].sigmoid() * 2) ** 2 * anchors_aux[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                pbox_aux = torch.cat((pxy_aux, pwh_aux), 1)  # predicted box
                 selected_tbox = targets[i][:, 2:6] * pre_gen_gains[i]
-                selected_tbox_aux = targets_aux[i][:, 2:6] * pre_gen_gains_aux[i]
                 selected_tbox[:, :2] -= grid
-                selected_tbox_aux[:, :2] -= grid_aux
-                iou = bbox_iou(pbox, selected_tbox, CIoU=True)  # iou(prediction, target)
-                iou_aux = bbox_iou(pbox_aux, selected_tbox_aux, CIoU=True)  # iou(prediction, target)
-                lbox += (1.0 - iou).mean() + 0.25 * (1.0 - iou_aux).mean()  # iou loss
+                iou = bbox_iou(pbox,selected_tbox, CIoU=True)[0] # iou(prediction, target)
+                lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
                 tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio
-                tobj_aux[b_aux, a_aux, gj_aux, gi_aux] = (1.0 - self.gr) + self.gr * iou_aux.detach().clamp(0).type(tobj_aux.dtype)  # iou ratio
 
                 # Classification
                 selected_tcls = targets[i][:, 1].long()
-                selected_tcls_aux = targets_aux[i][:, 1].long()
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
-                    t_aux = torch.full_like(ps_aux[:, 5:], self.cn, device=device)  # targets
                     t[range(n), selected_tcls] = self.cp
-                    t_aux[range(n_aux), selected_tcls_aux] = self.cp
-                    lcls += self.BCEcls(ps[:, 5:], t) + 0.25 * self.BCEcls(ps_aux[:, 5:], t_aux)  # BCE
+                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
+            
+            n_aux = b_aux.shape[0]  # number of targets
+            if n_aux:
+                ps_aux = pi_aux[b_aux, a_aux, gj_aux, gi_aux]  # prediction subset corresponding to targets
+                grid_aux = torch.stack([gi_aux, gj_aux], dim=1)
+                pxy_aux = ps_aux[:, :2].sigmoid() * 2. - 0.5
+                #pxy_aux = ps_aux[:, :2].sigmoid() * 3. - 1.
+                pwh_aux = (ps_aux[:, 2:4].sigmoid() * 2) ** 2 * anchors_aux[i]
+                pbox_aux = torch.cat((pxy_aux, pwh_aux), 1)  # predicted box
+                selected_tbox_aux = targets_aux[i][:, 2:6] * pre_gen_gains_aux[i]
+                selected_tbox_aux[:, :2] -= grid_aux
+                iou_aux = bbox_iou(pbox_aux, selected_tbox_aux, CIoU=True)[0] # iou(prediction, target)
+                lbox += 0.25 * (1.0 - iou_aux).mean()  # iou loss
+
+                # Objectness
+                tobj_aux[b_aux, a_aux, gj_aux, gi_aux] = (1.0 - self.gr) + self.gr * iou_aux.detach().clamp(0).type(tobj_aux.dtype)  # iou ratio
+
+                # Classification
+                selected_tcls_aux = targets_aux[i][:, 1].long()
+                if self.nc > 1:  # cls loss (only if multiple classes)
+                    t_aux = torch.full_like(ps_aux[:, 5:], self.cn, device=device)  # targets
+                    t_aux[range(n_aux), selected_tcls_aux] = self.cp
+                    lcls += 0.25 * self.BCEcls(ps_aux[:, 5:], t_aux)  # BCE
 
             obji = self.BCEobj(pi[..., 4], tobj)
             obji_aux = self.BCEobj(pi_aux[..., 4], tobj_aux)
@@ -1032,7 +1041,7 @@ class ComputeLossAuxOTA:
         return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
 
     def build_targets(self, p, targets, imgs):
-
+        
         indices, anch = self.find_3_positive(p, targets)
 
         matching_bs = [[] for pp in p]
@@ -1041,16 +1050,16 @@ class ComputeLossAuxOTA:
         matching_gis = [[] for pp in p]
         matching_targets = [[] for pp in p]
         matching_anchs = [[] for pp in p]
-
+        
         nl = len(p)    
-
+    
         for batch_idx in range(p[0].shape[0]):
-
+        
             b_idx = targets[:, 0]==batch_idx
             this_target = targets[b_idx]
             if this_target.shape[0] == 0:
                 continue
-
+                
             txywh = this_target[:, 2:6] * imgs[batch_idx].shape[1]
             txyxy = xywh2xyxy(txywh)
 
@@ -1063,9 +1072,9 @@ class ComputeLossAuxOTA:
             all_gj = []
             all_gi = []
             all_anch = []
-
+            
             for i, pi in enumerate(p):
-
+                
                 b, a, gj, gi = indices[i]
                 idx = (b == batch_idx)
                 b, a, gj, gi = b[idx], a[idx], gj[idx], gi[idx]                
@@ -1075,11 +1084,11 @@ class ComputeLossAuxOTA:
                 all_gi.append(gi)
                 all_anch.append(anch[i][idx])
                 from_which_layer.append(torch.ones(size=(len(b),)) * i)
-
+                
                 fg_pred = pi[b, a, gj, gi]                
                 p_obj.append(fg_pred[:, 4:5])
                 p_cls.append(fg_pred[:, 5:])
-
+                
                 grid = torch.stack([gi, gj], dim=1)
                 pxy = (fg_pred[:, :2].sigmoid() * 2. - 0.5 + grid) * self.stride[i] #/ 8.
                 #pxy = (fg_pred[:, :2].sigmoid() * 3. - 1. + grid) * self.stride[i]
@@ -1087,7 +1096,7 @@ class ComputeLossAuxOTA:
                 pxywh = torch.cat([pxy, pwh], dim=-1)
                 pxyxy = xywh2xyxy(pxywh)
                 pxyxys.append(pxyxy)
-
+            
             pxyxys = torch.cat(pxyxys, dim=0)
             if pxyxys.shape[0] == 0:
                 continue
@@ -1099,7 +1108,7 @@ class ComputeLossAuxOTA:
             all_gj = torch.cat(all_gj, dim=0)
             all_gi = torch.cat(all_gi, dim=0)
             all_anch = torch.cat(all_anch, dim=0)
-
+        
             pair_wise_iou = box_iou(txyxy, pxyxys)
 
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
@@ -1125,7 +1134,7 @@ class ComputeLossAuxOTA:
                torch.log(y/(1-y)) , gt_cls_per_image, reduction="none"
             ).sum(-1)
             del cls_preds_
-
+        
             cost = (
                 pair_wise_cls_loss
                 + 3.0 * pair_wise_iou_loss
@@ -1147,16 +1156,16 @@ class ComputeLossAuxOTA:
                 matching_matrix[cost_argmin, anchor_matching_gt > 1] = 1.0
             fg_mask_inboxes = matching_matrix.sum(0) > 0.0
             matched_gt_inds = matching_matrix[:, fg_mask_inboxes].argmax(0)
-
+        
             from_which_layer = from_which_layer[fg_mask_inboxes]
             all_b = all_b[fg_mask_inboxes]
             all_a = all_a[fg_mask_inboxes]
             all_gj = all_gj[fg_mask_inboxes]
             all_gi = all_gi[fg_mask_inboxes]
             all_anch = all_anch[fg_mask_inboxes]
-
+        
             this_target = this_target[matched_gt_inds]
-
+        
             for i in range(nl):
                 layer_idx = from_which_layer == i
                 matching_bs[i].append(all_b[layer_idx])
@@ -1182,11 +1191,10 @@ class ComputeLossAuxOTA:
                 matching_targets[i] = torch.tensor([], device='cuda:0', dtype=torch.int64)
                 matching_anchs[i] = torch.tensor([], device='cuda:0', dtype=torch.int64)
 
-
         return matching_bs, matching_as, matching_gjs, matching_gis, matching_targets, matching_anchs
 
     def build_targets2(self, p, targets, imgs):
-
+        
         indices, anch = self.find_5_positive(p, targets)
 
         matching_bs = [[] for pp in p]
@@ -1195,16 +1203,16 @@ class ComputeLossAuxOTA:
         matching_gis = [[] for pp in p]
         matching_targets = [[] for pp in p]
         matching_anchs = [[] for pp in p]
-
+        
         nl = len(p)    
-
+    
         for batch_idx in range(p[0].shape[0]):
-
+        
             b_idx = targets[:, 0]==batch_idx
             this_target = targets[b_idx]
             if this_target.shape[0] == 0:
                 continue
-
+                
             txywh = this_target[:, 2:6] * imgs[batch_idx].shape[1]
             txyxy = xywh2xyxy(txywh)
 
@@ -1217,9 +1225,9 @@ class ComputeLossAuxOTA:
             all_gj = []
             all_gi = []
             all_anch = []
-
+            
             for i, pi in enumerate(p):
-
+                
                 b, a, gj, gi = indices[i]
                 idx = (b == batch_idx)
                 b, a, gj, gi = b[idx], a[idx], gj[idx], gi[idx]                
@@ -1229,11 +1237,11 @@ class ComputeLossAuxOTA:
                 all_gi.append(gi)
                 all_anch.append(anch[i][idx])
                 from_which_layer.append(torch.ones(size=(len(b),)) * i)
-
+                
                 fg_pred = pi[b, a, gj, gi]                
                 p_obj.append(fg_pred[:, 4:5])
                 p_cls.append(fg_pred[:, 5:])
-
+                
                 grid = torch.stack([gi, gj], dim=1)
                 pxy = (fg_pred[:, :2].sigmoid() * 2. - 0.5 + grid) * self.stride[i] #/ 8.
                 #pxy = (fg_pred[:, :2].sigmoid() * 3. - 1. + grid) * self.stride[i]
@@ -1241,7 +1249,7 @@ class ComputeLossAuxOTA:
                 pxywh = torch.cat([pxy, pwh], dim=-1)
                 pxyxy = xywh2xyxy(pxywh)
                 pxyxys.append(pxyxy)
-
+            
             pxyxys = torch.cat(pxyxys, dim=0)
             if pxyxys.shape[0] == 0:
                 continue
@@ -1253,7 +1261,7 @@ class ComputeLossAuxOTA:
             all_gj = torch.cat(all_gj, dim=0)
             all_gi = torch.cat(all_gi, dim=0)
             all_anch = torch.cat(all_anch, dim=0)
-
+        
             pair_wise_iou = box_iou(txyxy, pxyxys)
 
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
@@ -1279,7 +1287,7 @@ class ComputeLossAuxOTA:
                torch.log(y/(1-y)) , gt_cls_per_image, reduction="none"
             ).sum(-1)
             del cls_preds_
-
+        
             cost = (
                 pair_wise_cls_loss
                 + 3.0 * pair_wise_iou_loss
@@ -1301,16 +1309,16 @@ class ComputeLossAuxOTA:
                 matching_matrix[cost_argmin, anchor_matching_gt > 1] = 1.0
             fg_mask_inboxes = matching_matrix.sum(0) > 0.0
             matched_gt_inds = matching_matrix[:, fg_mask_inboxes].argmax(0)
-
+        
             from_which_layer = from_which_layer[fg_mask_inboxes]
             all_b = all_b[fg_mask_inboxes]
             all_a = all_a[fg_mask_inboxes]
             all_gj = all_gj[fg_mask_inboxes]
             all_gi = all_gi[fg_mask_inboxes]
             all_anch = all_anch[fg_mask_inboxes]
-
+        
             this_target = this_target[matched_gt_inds]
-
+        
             for i in range(nl):
                 layer_idx = from_which_layer == i
                 matching_bs[i].append(all_b[layer_idx])
@@ -1342,7 +1350,7 @@ class ComputeLossAuxOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()  # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
@@ -1395,7 +1403,7 @@ class ComputeLossAuxOTA:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         indices, anch = [], []
-        gain = torch.ones(7, device=targets.device).long()   # normalized to gridspace gain
+        gain = torch.ones(7, device=targets.device).long()  # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
 
