@@ -358,7 +358,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%10s' * 2 + '%10.4g' * 5) %
+                pbar.set_description(('%10s' * 2 + '%10.4g' * 6) %
                                      (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                 callbacks.run('on_train_batch_end', ni, model, imgs, targets, paths, plots)
                 if callbacks.stop_training:
@@ -505,7 +505,7 @@ def parse_opt(known=False):
     # swin float()
     parser.add_argument('--swin_float', action='store_true', help='swin not use half to train/Val')
     parser.add_argument('--aux_ota_loss', action='store_true', help='swin not use half to train/Val')
-    parser.add_argument('--ota_match', action='store_true', help='swin not use half to train/Val'
+    parser.add_argument('--ota_match', action='store_true', help='swin not use half to train/Val')
     opt = parser.parse_known_args()[0] if known else parser.parse_args()
     return opt
 
