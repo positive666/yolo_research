@@ -70,12 +70,13 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 
    
 ##  Run 
-    ***   
+***   
+
 - 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
 	  
-	  # if your run Custom swinV2 ,add --swin_float
+	if your run Custom swinV2 ,add --swin_float
 	  
 - 2. run yolov7-aux model train ,your model must P6-model !
 	  
@@ -84,6 +85,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 - 2.1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
 - 2.2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
 - see reparameterization.py	
+
 ***
 	  
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
