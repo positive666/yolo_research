@@ -71,7 +71,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 ща
    
 ##  Run 
        
- ### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
+	### 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
 	  
