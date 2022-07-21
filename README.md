@@ -26,7 +26,7 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 ##  工程部署 Why Deepstream?  
  DS_5.1&&Tensorrt7+ ：https://github.com/positive666/Deepstream_Project
 
-     1.英伟达原生套装Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
+     1.英伟达提供的Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
 	 2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，推荐Yolov5nano或者nanodetplus,(工程上主流是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代。还有就是如何使用SGD炼丹的经验了)
 	 还有就是deepstream的普及，网上很多剪枝版本我也看了值得学习，但是工程不只在于学习，而在于成本和结果。
 	 3.x86和Jeston都可以部署，既然有一站式解决方案，我觉得工程和研究应用是完全不同的操作思路，精简高效达到目的.deepstream全做了并完成降维打击 ，当然也需要一定的综合开发能力。
@@ -82,9 +82,9 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
 		
-- 2.1. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
-- 2.2. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
-- see reparameterization.py	
+- 3. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
+- 4. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
+- 5. see reparameterization.py	
 
 ***
 	  
