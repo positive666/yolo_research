@@ -97,8 +97,8 @@ def select_device(device='', batch_size=0, newline=True):
 
     if not newline:
         s = s.rstrip()
-    LOGGER.info(s)  # emoji-safe
-    return torch.device('cuda:0' if cuda else 'mps' if mps else 'cpu')
+    LOGGER.info(s)  
+    return torch.device(arg)
 
 
 def time_sync():
