@@ -506,7 +506,7 @@ def main(opt, callbacks=Callbacks()):
         check_requirements(exclude=['thop'])
 
     # Resume
-     if opt.resume and not (check_wandb_resume(opt) or opt.evolve):  # resume an interrupted run
+    if opt.resume and not (check_wandb_resume(opt) or opt.evolve):  # resume an interrupted run
         last = Path(opt.resume if isinstance(opt.resume, str) else get_latest_run())  # specified or most recent last.pt
         assert last.is_file(), f'ERROR: --resume checkpoint {last} does not exist'
         opt_yaml = last.parent.parent / 'opt.yaml'  # train options yaml
