@@ -178,6 +178,7 @@ class QFocalLoss(nn.Module):
 
 
 class ComputeLoss:
+    sort_obj_iou = False
     # Compute losses
     def __init__(self, model, autobalance=False):
         self.sort_obj_iou = False
@@ -193,20 +194,22 @@ class ComputeLoss:
 
         # Focal loss
         g = h['fl_gamma']  # focal loss gamma
-        try :
-            self.g2=h['fl_eiou_gamma'] # focal eiou loss gamma
-        except:
-            print('check your hyperparameters yaml')
+        # try :
+            # self.g2=h['fl_eiou_gamma'] # focal eiou loss gamma
+        # except:
+            # print('check your hyperparameters yaml')
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
     
-        det = de_parallel(model).model[-1]  # Detect() module
-        self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.06, .02])  # P3-P7
-        self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
+        m = de_parallel(model).model[-1]  # Detect() module
+        self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, .02])  # P3-P7
+        self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
+        self.na = m.na  # number of anchors
+        self.nc = m.nc  # number of classes
+        self.nl = m.nl  # number of layers
+        self.anchors = m.anchors
         self.device = device
-        for k in 'na', 'nc', 'nl', 'anchors':
-            setattr(self, k, getattr(det, k))
 
     def __call__(self, p, targets):  # predictions, targets, model
         lcls = torch.zeros(1, device=self.device)  # class loss
@@ -221,25 +224,29 @@ class ComputeLoss:
 
             n = b.shape[0]  # number of targets
             if n:
-                pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # target-subset of predictions
+                # pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # target-subset of predictions
+                pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 2, 1, self.nc), 1)  # target-subset of predictions
 
                 # Regression
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target) 
-                try: #fix 
-                    if self.g2>0  :# Focal-EIOU https://arxiv.org/abs/2101.08158  if your need Fcal-EIOU , CIOU--->EIOU=True  
-                        lbox += ((bbox_iou(pbox, tbox[i], xywh=False)** self.g2)*(1 - iou)).mean() 
-                except:   
-                    lbox += (1.0 - iou).mean()  # iou loss
+               # try: #fix 
+                   # if self.g2>0  :# Focal-EIOU https://arxiv.org/abs/2101.08158  if your need Fcal-EIOU , CIOU--->EIOU=True  
+                        #lbox += ((bbox_iou(pbox, tbox[i], xywh=False)** self.g2)*(1 - iou)).mean() 
+               # except:   
+                lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
                 score_iou = iou.detach().clamp(0).type(tobj.dtype)
                 if self.sort_obj_iou:
-                    sort_id = torch.argsort(score_iou)
-                    b, a, gj, gi, score_iou = b[sort_id], a[sort_id], gj[sort_id], gi[sort_id], score_iou[sort_id]
-                tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * score_iou  # iou ratio
+                    j = iou.argsort()
+                    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
+    
+                if self.gr < 1:
+                    iou = (1.0 - self.gr) + self.gr * iou
+                tobj[b, a, gj, gi] = iou  # iou ratio
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
@@ -274,10 +281,16 @@ class ComputeLoss:
         targets = torch.cat((targets.repeat(na, 1, 1), ai[..., None]), 2)  # append anchor indices
 
         g = 0.5  # bias
-        off = torch.tensor([[0, 0],
-                            [1, 0], [0, 1], [-1, 0], [0, -1],  # j,k,l,m
-                            # [1, 1], [1, -1], [-1, 1], [-1, -1],  # jk,jm,lk,lm
-                            ], device=self.device).float() * g  # offsets
+        off = torch.tensor(
+            [
+                [0, 0],
+                [1, 0],
+                [0, 1],
+                [-1, 0],
+                [0, -1],  # j,k,l,m
+                # [1, 1], [1, -1], [-1, 1], [-1, -1],  # jk,jm,lk,lm
+            ],
+            device=self.device).float() * g  # offsets
 
         for i in range(self.nl):
             anchors, shape = self.anchors[i], p[i].shape
@@ -317,6 +330,7 @@ class ComputeLoss:
             tcls.append(c)  # class
 
         return tcls, tbox, indices, anch
+        
 class ComputeLossOTA:
     # Compute losses
     def __init__(self, model, autobalance=False):

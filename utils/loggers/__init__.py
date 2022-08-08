@@ -10,7 +10,7 @@ import pkg_resources as pkg
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.general import colorstr, cv2, emojis
+from utils.general import colorstr, cv2
 from utils.loggers.wandb.wandb_utils import WandbLogger
 from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
@@ -65,7 +65,7 @@ class Loggers():
         if not wandb:
             prefix = colorstr('Weights & Biases: ')
             s = f"{prefix}run 'pip install wandb' to automatically track and visualize YOLOv5 🚀 runs (RECOMMENDED)"
-            self.logger.info(emojis(s))
+            self.logger.info(s)
 
         # TensorBoard
         s = self.save_dir

@@ -44,7 +44,7 @@ from utils.autoanchor import check_anchors
 from utils.autobatch import check_train_batch_size
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
-from utils.downloads import attempt_download
+from utils.downloads import attempt_download, is_url
 from utils.general import (LOGGER, check_amp, check_dataset, check_file, check_git_status, check_img_size,
                            check_requirements, check_suffix, check_yaml, colorstr, get_latest_run, increment_path,
                            init_seeds, intersect_dicts, labels_to_class_weights, labels_to_image_weights, methods,
@@ -79,6 +79,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with open(hyp, errors='ignore') as f:
             hyp = yaml.safe_load(f)  # load hyps dict
     LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
+    opt.hyp = hyp.copy()  # for saving hyps to checkpoints
 
     # Save run settings
     if not evolve:
@@ -150,7 +151,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     nbs = 64  # nominal batch size
     accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing
     hyp['weight_decay'] *= batch_size * accumulate / nbs  # scale weight_decay
-    LOGGER.info(f"Scaled weight_decay = {hyp['weight_decay']}")
+    #LOGGER.info(f"Scaled weight_decay = {hyp['weight_decay']}")
     optimizer = smart_optimizer(model, opt.optimizer, hyp['lr0'], hyp['momentum'], hyp['weight_decay'])
    
 
@@ -168,7 +169,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     start_epoch, best_fitness = 0, 0.0
     if pretrained:
         # Optimizer
-        if ckpt['optimizer'] is not None:
+        if ckpt['optimizer'] is not None:(decay={decay})
             optimizer.load_state_dict(ckpt['optimizer'])
             best_fitness = ckpt['best_fitness']
 
@@ -406,6 +407,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     'updates': ema.updates,
                     'optimizer': optimizer.state_dict(),
                     'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None,
+                    'opt': vars(opt),
                     'date': datetime.now().isoformat()}
 
                 # Save last, best and delete
@@ -521,13 +523,20 @@ def main(opt, callbacks=Callbacks()):
         check_requirements(exclude=['thop'])
 
     # Resume
-    if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
-        ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
-        assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
-        with open(Path(ckpt).parent.parent / 'opt.yaml', errors='ignore') as f:
-            opt = argparse.Namespace(**yaml.safe_load(f))  # replace
-        opt.cfg, opt.weights, opt.resume = '', ckpt, True  # reinstate
-        LOGGER.info(f'Resuming training from {ckpt}')
+     if opt.resume and not (check_wandb_resume(opt) or opt.evolve):  # resume an interrupted run
+        last = Path(opt.resume if isinstance(opt.resume, str) else get_latest_run())  # specified or most recent last.pt
+        assert last.is_file(), f'ERROR: --resume checkpoint {last} does not exist'
+        opt_yaml = last.parent.parent / 'opt.yaml'  # train options yaml
+        opt_data = opt.data  # original dataset
+        if opt_yaml.is_file():
+            with open(opt_yaml, errors='ignore') as f:
+                d = yaml.safe_load(f)
+        else:
+            d = torch.load(last, map_location='cpu')['opt']
+        opt = argparse.Namespace(**d)  # replace
+        opt.cfg, opt.weights, opt.resume = '', str(last), True  # reinstate
+        if is_url(opt.data):
+            opt.data = str(opt_data)  # avoid HUB resume auth timeout
     else:
         opt.data, opt.cfg, opt.hyp, opt.weights, opt.project = \
             check_file(opt.data), check_yaml(opt.cfg), check_yaml(opt.hyp), str(opt.weights), str(opt.project)  # checks

@@ -14,6 +14,7 @@ import random
 import re
 import shutil
 import signal
+import sys
 import threading
 import time
 import urllib
@@ -96,7 +97,8 @@ def set_logging(name=None, verbose=VERBOSE):
 
 set_logging()  # run before defining LOGGER
 LOGGER = logging.getLogger("yolov5")  # define globally (used in train.py, val.py, detect.py, etc.)
-
+for fn in LOGGER.info, LOGGER.warning:
+    _fn, fn = fn, lambda x: _fn(emojis(x))  # emoji safe logging
 
 def user_config_dir(dir='Ultralytics', env_var='YOLOV5_CONFIG_DIR'):
     # Return path of user configuration directory. Prefer environment variable if exists. Make dir if required.
@@ -320,7 +322,7 @@ def check_git_status():
         s += f"⚠️ YOLOv5 is out of date by {n} commit{'s' * (n > 1)}. Use `git pull` or `git clone {url}` to update."
     else:
         s += f'up to date with {url} ✅'
-    LOGGER.info(emojis(s))  # emoji-safe
+    LOGGER.info(s)  # emoji-safe
 
 
 def check_python(minimum='3.7.0'):
@@ -374,7 +376,7 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
         source = file.resolve() if 'file' in locals() else requirements
         s = f"{prefix} {n} package{'s' * (n > 1)} updated per {source}\n" \
             f"{prefix} ⚠️ {colorstr('bold', 'Restart runtime or rerun command for updates to take effect')}\n"
-        LOGGER.info(emojis(s))
+        LOGGER.info(s)
 
 
 def check_img_size(imgsz, s=32, floor=0):
@@ -474,7 +476,7 @@ def check_dataset(data, autodownload=True):
     for k in 'train', 'val', 'nc':
         assert k in data, emojis(f"data.yaml '{k}:' field missing ❌")
     if 'names' not in data:
-        LOGGER.warning(emojis("data.yaml 'names:' field missing ⚠, assigning default names 'class0', 'class1', etc."))
+        LOGGER.warning("data.yaml 'names:' field missing ⚠️, assigning default names 'class0', 'class1', etc.")
         data['names'] = [f'class{i}' for i in range(data['nc'])]  # default names
         
     # Resolve paths
@@ -510,7 +512,7 @@ def check_dataset(data, autodownload=True):
                     r = exec(s, {'yaml': data})  # return None
                 dt = f'({round(time.time() - t, 1)}s)'    
                 s = f"success ✅ {dt}, saved to {colorstr('bold', root)}" if r in (0, None) else f"failure {dt} ❌"
-                LOGGER.info(emojis(f"Dataset download {s}"))
+                LOGGER.info(f"Dataset download {s}")
             else:
                 raise Exception('Dataset not found ❌❌❌❌.')
     check_font('Arial.ttf' if is_ascii(data['names']) else 'Arial.Unicode.ttf', progress=True)  # download fonts
@@ -537,11 +539,11 @@ def check_amp(model):
     im = f if f.exists() else 'https://ultralytics.com/images/bus.jpg' if check_online() else np.ones((640, 640, 3))
     try:
         assert amp_allclose(model, im) or amp_allclose(DetectMultiBackend('yolov5n.pt', device), im)
-        LOGGER.info(emojis(f'{prefix}checks passed ✅'))
+        LOGGER.info(f'{prefix}checks passed ✅')
         return True
     except Exception:
         help_url = 'https://github.com/ultralytics/yolov5/issues/7908'
-        LOGGER.warning(emojis(f'{prefix}checks failed ❌, disabling Automatic Mixed Precision. See {help_url}'))
+        LOGGER.warning(f'{prefix}checks failed ❌, disabling Automatic Mixed Precision. See {help_url}')
         return False
 
 

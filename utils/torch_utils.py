@@ -67,7 +67,7 @@ def device_count():
 
 def select_device(device='', batch_size=0, newline=True):
     # device = None or 'cpu' or 0 or '0' or '0,1,2,3'
-    s = f'YOLOv5 🚀 {git_describe() or file_date()} Python-{platform.python_version()} torch-{torch.__version__} '
+    s = f'YOLOv5_research_plus 🚀 {git_describe() or file_date()} Python-{platform.python_version()} torch-{torch.__version__} '
     device = str(device).strip().lower().replace('cuda:', '').replace('none', '')  # to string, 'cuda:0' to '0'
     cpu = device == 'cpu'
     mps = device == 'mps'  # Apple Metal Performance Shaders (MPS)
@@ -78,8 +78,7 @@ def select_device(device='', batch_size=0, newline=True):
         assert torch.cuda.is_available() and torch.cuda.device_count() >= len(device.replace(',', '')), \
             f"Invalid CUDA '--device {device}' requested, use '--device cpu' or pass valid CUDA device(s)"
 
-    cuda = not cpu and torch.cuda.is_available()
-    if cuda:
+    if not (cpu or mps) and torch.cuda.is_available():  # prefer GPU if available
         devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
         n = len(devices)  # device count
         if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
@@ -88,14 +87,17 @@ def select_device(device='', batch_size=0, newline=True):
         for i, d in enumerate(devices):
             p = torch.cuda.get_device_properties(i)
             s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
-    elif mps:
+        arg = 'cuda:0'
+    elif mps and getattr(torch, 'has_mps', False) and torch.backends.mps.is_available():  # prefer MPS if available
         s += 'MPS\n'
-    else:
+        arg = 'mps'
+    else:  # revert to CPU
         s += 'CPU\n'
+        arg = 'cpu'
 
     if not newline:
         s = s.rstrip()
-    LOGGER.info(s.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else s)  # emoji-safe
+    LOGGER.info(s)  # emoji-safe
     return torch.device('cuda:0' if cuda else 'mps' if mps else 'cpu')
 
 
@@ -272,7 +274,7 @@ def copy_attr(a, b, include=(), exclude=()):
             continue
         else:
             setattr(a, k, v)
-def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, weight_decay=1e-5):
+def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
     ## param group optimizer:
     g = [], [], []  # optimizer parameter groups
     bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
@@ -361,12 +363,32 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, weight_decay=1e-
     else:
         raise NotImplementedError(f'Optimizer {name} not implemented.')
 
-    optimizer.add_param_group({'params': g[0], 'weight_decay': weight_decay})  # add g0 with weight_decay
+    optimizer.add_param_group({'params': g[0], 'weight_decay': decay})  # add g0 with weight_decay
     optimizer.add_param_group({'params': g[1], 'weight_decay': 0.0})  # add g1 (biases)
-    LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__} with parameter groups "
-                f"{len(g[1])} weight (no decay), {len(g[0])} weight, {len(g[2])} bias")
+    LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr})  with parameter groups "
+                f"{len(g[1])} weight (decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias")
     return optimizer
 
+def smart_resume(ckpt, optimizer, ema=None, weights='yolov5s.pt', epochs=300, resume=True):
+    # Resume training from a partially trained checkpoint
+    best_fitness = 0.0
+    start_epoch = ckpt['epoch'] + 1
+    if ckpt['optimizer'] is not None:
+        optimizer.load_state_dict(ckpt['optimizer'])  # optimizer
+        best_fitness = ckpt['best_fitness']
+    if ema and ckpt.get('ema'):
+        ema.ema.load_state_dict(ckpt['ema'].float().state_dict())  # EMA
+        ema.updates = ckpt['updates']
+    if resume:
+        assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.'
+        LOGGER.info(f'Resuming training from {weights} for {epochs - start_epoch} more epochs to {epochs} total epochs')
+        assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.\n' \
+                                f"Start a new training without --resume, i.e. 'python train.py --weights {weights}'"
+        LOGGER.info(f'Resuming training from {weights} from epoch {start_epoch} to {epochs} total epochs')
+    if epochs < start_epoch:
+        LOGGER.info(f"{weights} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {epochs} more epochs.")
+        epochs += ckpt['epoch']  # finetune additional epochs
+    return best_fitness, start_epoch, epochs
 
 
 
