@@ -166,26 +166,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     ema = ModelEMA(model) if RANK in {-1, 0} else None
 
     # Resume
-    start_epoch, best_fitness = 0, 0.0
+    best_fitness, start_epoch = 0.0, 0
     if pretrained:
-        # Optimizer
-        if ckpt['optimizer'] is not None:(decay={decay})
-            optimizer.load_state_dict(ckpt['optimizer'])
-            best_fitness = ckpt['best_fitness']
-
-        # EMA
-        if ema and ckpt.get('ema'):
-            ema.ema.load_state_dict(ckpt['ema'].float().state_dict())
-            ema.updates = ckpt['updates']
-
-        # Epochs
-        start_epoch = ckpt['epoch'] + 1
-        if resume:
-            assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.'
-        if epochs < start_epoch:
-            LOGGER.info(f"{weights} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {epochs} more epochs.")
-            epochs += ckpt['epoch']  # finetune additional epochs
-
+        best_fitness, start_epoch, epochs = smart_resume(ckpt, optimizer, ema, weights, epochs, resume)
         del ckpt, csd
 
     # DP mode
