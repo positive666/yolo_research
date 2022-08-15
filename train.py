@@ -259,7 +259,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     if aux_ota_loss:
         compute_loss_ota = ComputeLossAuxOTA(model)  # init loss class 
-    else ota_match:
+    else :
         compute_loss_ota = ComputeLossOTA(model)
     stopper = EarlyStopping(patience=opt.patience)
     compute_loss = ComputeLoss(model)  # init loss class
