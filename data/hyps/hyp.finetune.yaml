@@ -38,3 +38,4 @@ mosaic: 1.0
 mixup: 0.243
 copy_paste: 0.0
 paste_in: 0.0
+loss_ota: 0.0 # use ComputeLossOTA, use 0 for faster training

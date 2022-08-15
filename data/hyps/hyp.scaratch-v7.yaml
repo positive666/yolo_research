@@ -27,4 +27,4 @@ mosaic: 1.0  # image mosaic (probability)
 mixup: 0.15  # image mixup (probability)
 copy_paste: 0.0  # image copy paste (probability)
 paste_in: 0.15  # image copy paste (probability)
-
+loss_ota: 1 # use ComputeLossOTA, use 0 for faster training
