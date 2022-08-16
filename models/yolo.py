@@ -79,12 +79,12 @@ class Detect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         
-    def _make_grid(self, nx=20, ny=20, i=0):
+    def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype
         shape = 1, self.na, ny, nx, 2  # grid shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
-        if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
+        if torch_1_10:  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
             yv, xv = torch.meshgrid(y, x, indexing='ij')
         else:
             yv, xv = torch.meshgrid(y, x)
@@ -199,12 +199,12 @@ class ASFF_Detect(nn.Module):   #add ASFFV5 layer and Rfb
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
     
-    def _make_grid(self, nx=20, ny=20, i=0):
+    def _make_grid(self, nx=20, ny=20, i=0,torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype
         shape = 1, self.na, ny, nx, 2  # grid shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
-        if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
+        if torch_1_10:  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
             yv, xv = torch.meshgrid(y, x, indexing='ij')
         else:
             yv, xv = torch.meshgrid(y, x)

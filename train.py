@@ -319,7 +319,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
                 
-                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if ( hyp['loss_ota']==1 )else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
+                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if (  hyp['loss_ota']==1 )else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
                 #loss, loss_items = compute_loss(pred, targets.to(device), imgs)  # loss scaled by batch_size # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
@@ -549,9 +549,6 @@ def main(opt, callbacks=Callbacks()):
     # Train
     if not opt.evolve:
         train(opt.hyp, opt, device, callbacks)
-        if WORLD_SIZE > 1 and RANK == 0:
-            LOGGER.info('Destroying process group... ')
-            dist.destroy_process_group()
 
     # Evolve hyperparameters (optional)
     else:
