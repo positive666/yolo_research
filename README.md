@@ -7,7 +7,15 @@
 
 ##  🌟 基于yolov5&&yolov7的改进库
 
-based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
+***
+feature 
+***
+     - 实时的v5代码更新改动&&v7的适配
+	 - 早期集成的attention、self-attention维护和调试
+	 - 额外的网络结构补充
+	 
+
+news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
 
 简单来说,V7是V5的一次扩充版本,详情可以看：
 [CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
@@ -33,6 +41,8 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 ***
 最近更新：
 
+- 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
+
 - 2022/7/13  同步更新加入了yolov7的P6模型訓練部分代碼，p6是需要aux的所以需要添加Loss部分計算，代碼和CSDN持續更新中,由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去
 
 - 2022/7/7   依旧全网首发 ：以目前仓库的魔改版V5为基准同步了YOLOV7的核心改动，代码风格是最新的，后续会持续完善优化，完美融合V7，后续博客争取更新第一时间！
@@ -48,9 +58,8 @@ based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 �
 	| YOLOv5s_decoup     |   0.367   |  0.203    |     7.1       | 17.2   |
     | YOLOv5s_GAM_group   |  0.353  	|  0.192 	 |     11       | 21.4   |  （待进一步更新）
 
-- 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
-- 2022/6/20  跟作者更新的代码进行了一些更新和合并，最近在做人体姿态，有问题可以先挂issue
-- 2022/4/12  1.修复了一些常规的问题BUG并合并了V5作者的最新代码更新，大概包含之前缺少了一些可学习参数和代码优化,如添加了swintransformerV2.0的相对位置编码加入优化器等。 2.目前看来GAM换用组卷积效果有待商榷，后续进一步整理消融实验总结。
+
+- 2022/3/26  1.修复了一些常规的问题BUG并合并了V5作者的最新代码更新，大概包含之前缺少了一些可学习参数和代码优化,如添加了swintransformerV2.0的相对位置编码加入优化器等。 2.目前看来GAM换用组卷积效果有待商榷，后续进一步整理消融实验总结。
 - 2022/3/16  对上传的GAM注意力层进行了简单的实验，yolov5s+GAM在Visdrone数据集上的结果举例参考，后续的话其实难点在于轻量化，探究大模型的骨干估计只有大厂研究资源能有成本去做。
 - 2022/3/5   近期会整理一些去年的实验数据/、使用swin2的骨干，超参数需要调试一下，首先要稍微减低学习率，（实测SGD）；也可以把SWIN层作为注意力插件训练，这个和以往的操作类似，不再赘述了 需要开启--swin_float   命令参数，因为点积不被cuda的half支持，而优化器的问题，那么问题基本就是较多的swin block 堆积导致的增量更新。同时伴随着GPU的开销。 
 - 2022/3.1   （不完整更新,供参考，怕忙断更，所以先放出部分修改，目前还在动态调试中）按照SWintransformerV2.0 的改进点：修改了NORM层的位置/attention将dot换成scaled cosine self-attention，待更新的优化部分：1.序列窗口注意力计算，降低显存开销 2、训练优化器
