@@ -446,7 +446,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     if is_coco:
                         callbacks.run('on_fit_epoch_end', list(mloss) + list(results) + lr, epoch, best_fitness, fi)
 
-        callbacks.run('on_train_end', last, best, plots, epoch, results)
+        callbacks.run('on_train_end', last, best,  epoch, results)
 
     torch.cuda.empty_cache()
     return results
