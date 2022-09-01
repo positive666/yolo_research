@@ -15,7 +15,6 @@ import re
 import shutil
 import signal
 import sys
-import threading
 import time
 import urllib
 from datetime import datetime
@@ -34,6 +33,7 @@ import torch
 import torchvision
 import yaml
 
+from utils import TryExcept
 from torch.nn import functional as F
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
@@ -118,12 +118,23 @@ CONFIG_DIR = user_config_dir()  # Ultralytics settings dir
 
 
 class Profile(contextlib.ContextDecorator):
-    # Usage: @Profile() decorator or 'with Profile():' context manager
+    # YOLOv5 Profile class. Usage: @Profile() decorator or 'with Profile():' context manager
+    def __init__(self, t=0.0):
+        self.t = t
+        self.cuda = torch.cuda.is_available()
+
     def __enter__(self):
-        self.start = time.time()
+        self.start = self.time()
+        return self
 
     def __exit__(self, type, value, traceback):
-        print(f'Profile results: {time.time() - self.start:.5f}s')
+        self.dt = self.time() - self.start  # delta-time
+        self.t += self.dt  # accumulate dt
+
+    def time(self):
+        if self.cuda:
+            torch.cuda.synchronize()
+        return time.time()
 
 
 class Timeout(contextlib.ContextDecorator):
@@ -161,40 +172,24 @@ class WorkingDirectory(contextlib.ContextDecorator):
         os.chdir(self.cwd)
 
 
-def try_except(func):
-    # try-except function. Usage: @try_except decorator
-    def handler(*args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except Exception as e:
-            print(e)
-
-    return handler
-
-
-def threaded(func):
-    # Multi-threads a target function and returns thread. Usage: @threaded decorator
-    def wrapper(*args, **kwargs):
-        thread = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=True)
-        thread.start()
-        return thread
-
-    return wrapper
-
 
 def methods(instance):
     # Get class/instance methods
     return [f for f in dir(instance) if callable(getattr(instance, f)) and not f.startswith("__")]
 
 
-def print_args(args: Optional[dict] = None, show_file=True, show_fcn=False):
+def print_args(args: Optional[dict] = None, show_file=True, show_func=False):
     # Print function arguments (optional args dict)
     x = inspect.currentframe().f_back  # previous frame
-    file, _, fcn, _, _ = inspect.getframeinfo(x)
+    file, _, func, _, _ = inspect.getframeinfo(x)
     if args is None:  # get args automatically
         args, _, _, frm = inspect.getargvalues(x)
         args = {k: v for k, v in frm.items() if k in args}
-    s = (f'{Path(file).stem}: ' if show_file else '') + (f'{fcn}: ' if show_fcn else '')
+    try:
+        file = Path(file).resolve().relative_to(ROOT).with_suffix('')
+    except ValueError:
+        file = Path(file).stem
+    s = (f'{file}: ' if show_file else '') + (f'{func}: ' if show_func else '')
     LOGGER.info(colorstr(s) + ', '.join(f'{k}={v}' for k, v in args.items()))
 
 
@@ -323,7 +318,7 @@ def git_describe(path=ROOT):  # path must be a directory
         return ''
 
 
-@try_except
+@TryExcept()
 @WorkingDirectory(ROOT)
 def check_git_status():
     # Recommend 'git pull' if code is out of date
@@ -361,7 +356,7 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
     return result
 
 
-@try_except
+@TryExcept()
 def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), install=True, cmds=()):
     # Check installed dependencies meet requirements (pass *.txt file or list of packages)
     prefix = colorstr('red', 'bold', 'requirements:')
@@ -552,8 +547,8 @@ def check_amp(model):
 
     prefix = colorstr('AMP: ')
     device = next(model.parameters()).device  # get model device
-    if device.type == 'cpu':
-        return False  # AMP disabled on CPU
+    if device.type in ('cpu', 'mps'):
+        return False  # AMP only used on CUDA devices
     f = ROOT / 'data' / 'images' / 'bus.jpg'  # image to check
     im = f if f.exists() else 'https://ultralytics.com/images/bus.jpg' if check_online() else np.ones((640, 640, 3))
     try:
@@ -564,6 +559,17 @@ def check_amp(model):
         help_url = 'https://github.com/ultralytics/yolov5/issues/7908'
         LOGGER.warning(f'{prefix}checks failed ❌, disabling Automatic Mixed Precision. See {help_url}')
         return False
+
+def yaml_load(file='data.yaml'):
+    # Single-line safe yaml loading
+    with open(file, errors='ignore') as f:
+        return yaml.safe_load(f)
+
+
+def yaml_save(file='data.yaml', data={}):
+    # Single-line safe yaml saving
+    with open(file, 'w') as f:
+        yaml.safe_dump({k: str(v) if isinstance(v, Path) else v for k, v in data.items()}, f, sort_keys=False)
 
 
 def url2file(url):

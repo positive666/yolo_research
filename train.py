@@ -92,6 +92,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     data_dict = None
     if RANK in {-1, 0}:
         loggers = Loggers(save_dir, weights, opt, hyp, LOGGER)  # loggers instance
+        if loggers.clearml:
+            data_dict = loggers.clearml.data_dict  # None if no ClearML dataset or filled in by ClearML
         if loggers.wandb:
             data_dict = loggers.wandb.data_dict
             if resume:
@@ -168,9 +170,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Resume
     best_fitness, start_epoch = 0.0, 0
     if pretrained:
-        best_fitness, start_epoch, epochs = smart_resume(ckpt, optimizer, ema, weights, epochs, resume)
-        del ckpt, csd
-
+        if resume:
+            best_fitness, start_epoch, epochs = smart_resume(ckpt, optimizer, ema, weights, epochs, resume)
+        del ckpt, 
+       
     # DP mode
     if cuda and RANK == -1 and torch.cuda.device_count() > 1:
         LOGGER.warning('WARNING: DP not recommended, use torch.distributed.run for best DDP Multi-GPU results.\n'
@@ -230,7 +233,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
             model.half().float()  # pre-reduce anchor precision
 
-        callbacks.run('on_pretrain_routine_end')
+        callbacks.run('on_pretrain_routine_end' ,labels, names)
 
     # DDP mode
     if cuda and RANK != -1:
@@ -246,7 +249,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
-    model.gr=1.0    # iou loss ratio (obj_loss = 1.0 or iou)
+    #model.gr=1.0    # iou loss ratio (obj_loss = 1.0 or iou)
 
     # Start training
     t0 = time.time()
@@ -261,7 +264,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         compute_loss_ota = ComputeLossAuxOTA(model)  # init loss class 
     else :
         compute_loss_ota = ComputeLossOTA(model)
-    stopper = EarlyStopping(patience=opt.patience)
+    stopper,stop= EarlyStopping(patience=opt.patience),False
     compute_loss = ComputeLoss(model)  # init loss class
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -318,8 +321,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                
-                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if (  hyp['loss_ota']==1 )else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
+                loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if ( hyp['loss_ota']==1 ) else compute_loss(pred, targets.to(device)) # loss scaled by batch_siz
                 #loss, loss_items = compute_loss(pred, targets.to(device), imgs)  # loss scaled by batch_size # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
@@ -347,7 +349,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 pbar.set_description(('%10s' * 2 + '%10.4g' * 5) %
                                         (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                                         
-                callbacks.run('on_train_batch_end', ni, model, imgs, targets, paths, plots)
+                callbacks.run('on_train_batch_end', model,ni, imgs, targets, paths)
                 if callbacks.stop_training:
                     return
             # end batch ------------------------------------------------------------------------------------------------
@@ -359,7 +361,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK in {-1, 0}:
             # mAP
             callbacks.run('on_train_epoch_end', epoch=epoch)
-            ema.update_attr(model, include=['yaml', 'nc', 'hyp','gr', 'names', 'stride', 'class_weights'])
+            ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if not noval or final_epoch:  # Calculate mAP
                 results, maps, _ = val.run(data_dict,
@@ -376,6 +378,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = list(mloss) + list(results) + lr
