@@ -237,7 +237,7 @@ class LoadImages:
         else:
             # Read image
             self.count += 1
-            img0 = cv2.imread(path)  # BGR
+            im0 = cv2.imread(path)  # BGR
             assert img0 is not None, f'Image Not Found {path}'
             s = f'image {self.count}/{self.nf} {path}: '
 
@@ -248,7 +248,7 @@ class LoadImages:
             im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
             im = np.ascontiguousarray(im)  # contiguous
 
-        return path, img, img0, self.cap, s
+        return path, im, im0, self.cap, s
 
     def new_video(self, path):
         self.frame = 0
@@ -280,8 +280,8 @@ class LoadWebcam:  # for inference
             raise StopIteration
 
         # Read frame
-        ret_val, img0 = self.cap.read()
-        img0 = cv2.flip(img0, 1)  # flip left-right
+        ret_val, im0 = self.cap.read()
+        im0 = cv2.flip(im0, 1)  # flip left-right
 
         # Print
         assert ret_val, f'Camera Error {self.pipe}'
@@ -289,11 +289,11 @@ class LoadWebcam:  # for inference
         s = f'webcam {self.count}: '
 
          # Process
-        img = letterbox(img0, self.img_size, stride=self.stride)[0]
-        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
-        img = np.ascontiguousarray(img)
+        im = letterbox(img0, self.img_size, stride=self.stride)[0]
+        im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        im = np.ascontiguousarray(im)
 
-        return img_path, img, img0, None, s
+        return img_path, im, im0, None, s
 
     def __len__(self):
         return 0
