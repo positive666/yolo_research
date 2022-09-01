@@ -177,7 +177,7 @@ class _RepeatSampler:
 
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
-    def __init__(self, path, img_size=640, stride=32, auto=True):
+    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None):
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
             p = str(Path(p).resolve())
@@ -301,7 +301,7 @@ class LoadWebcam:  # for inference
 
 class LoadStreams:
     # YOLOv5 streamloader, i.e. `python detect.py --source 'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`
-    def __init__(self, sources='streams.txt', img_size=640, stride=32, auto=True):
+    def __init__(self, sources='streams.txt', img_size=640, stride=32, auto=True, transforms=None):
         self.mode = 'stream'
         self.img_size = img_size
         self.stride = stride
@@ -315,7 +315,6 @@ class LoadStreams:
         n = len(sources)
         self.imgs, self.fps, self.frames, self.threads = [None] * n, [0] * n, [0] * n, [None] * n
         self.sources = [clean_str(x) for x in sources]  # clean source names for later
-        self.auto = auto
         for i, s in enumerate(sources):  # index, source
             # Start thread to read frames from video stream
             st = f'{i + 1}/{n}: {s}... '
@@ -344,6 +343,8 @@ class LoadStreams:
         # check for common shapes
         s = np.stack([letterbox(x, self.img_size, stride=self.stride, auto=self.auto)[0].shape for x in self.imgs])
         self.rect = np.unique(s, axis=0).shape[0] == 1  # rect inference if all shapes equal
+        self.auto = auto and self.rect
+        self.transforms = transforms  # optional
         if not self.rect:
             LOGGER.warning('WARNING: Stream shapes differ. For optimal performance supply similarly-shaped streams.')
 
