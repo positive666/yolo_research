@@ -201,6 +201,7 @@ class LoadImages:
         self.video_flag = [False] * ni + [True] * nv
         self.mode = 'image'
         self.auto = auto
+        self.transforms = transforms  # optional
         if any(videos):
             self.new_video(videos[0])  # new video
         else:
