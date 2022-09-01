@@ -635,6 +635,9 @@ class MT(nn.Module):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
         return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
 
+
+
+
 class BaseModel(nn.Module):
     # YOLOv5 base model
     def forward(self, x, profile=False, visualize=False):
@@ -654,14 +657,14 @@ class BaseModel(nn.Module):
         return x
 
     def _profile_one_layer(self, m, x, dt):
-        c = m == self.model[-1]  # is final layer, copy input as inplace fix
+        c = isinstance(m, Detect) or isinstance(m, ASFF_Detect)or isinstance(m, Decoupled_Detect) # is final layer, copy input as inplace fix
         o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
         t = time_sync()
         for _ in range(10):
             m(x.copy() if c else x)
         dt.append((time_sync() - t) * 100)
         if m == self.model[0]:
-            LOGGER.info(f"{'time (ms)':>10s} {'GFLOPs':>10s} {'params':>10s}  module")
+            LOGGER.info(f"{'time (ms)':>10s} {'GFLOPs':>10s} {'params':>10s}  {'module'}")
         LOGGER.info(f'{dt[-1]:10.2f} {o:10.2f} {m.np:10.0f}  {m.type}')
         if c:
             LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
@@ -673,6 +676,15 @@ class BaseModel(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.forward_fuse  # update forward
+            elif isinstance(m, RepConv):
+                #print(f" fuse_repvgg_block")
+                m.fuse_repvgg_block()
+            elif isinstance(m, RepConv_OREPA):
+                #print(f" switch_to_deploy")
+                m.switch_to_deploy()    
+            elif isinstance(m, (IDetect, IAuxDetect)): ##add fuse layers
+                m.fuse()
+                m.forward = m.fuseforward    
         self.info()
         return self
 
@@ -683,14 +695,14 @@ class BaseModel(nn.Module):
         # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
         self = super()._apply(fn)
         m = self.model[-1]  # Detect()
-        if isinstance(m, Detect):
+        if isinstance(m, Detect)or isinstance(m, ASFF_Detect) or isinstance(m, Decoupled_Detect):
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
                 m.anchor_grid = list(map(fn, m.anchor_grid))
         return self
 
-class Model(nn.Module):
+class DetectionModel(BaseModel):
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
@@ -780,18 +792,7 @@ class Model(nn.Module):
         y = self._clip_augmented(y)  # clip augmented tails
         return torch.cat(y, 1), None  # augmented inference, train
 
-    def _forward_once(self, x, profile=False, visualize=False):
-        y, dt = [], []  # outputs
-        for m in self.model:
-            if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
-            if profile:
-                self._profile_one_layer(m, x, dt)
-            x = m(x)  # run
-            y.append(x if m.i in self.save else None)  # save output
-            if visualize:
-                feature_visualization(x, m.type, m.i, save_dir=visualize)
-        return x
+    
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
@@ -821,18 +822,7 @@ class Model(nn.Module):
         y[-1] = y[-1][:, i:]  # small
         return y
 
-    def _profile_one_layer(self, m, x, dt):
-        c = isinstance(m, Detect) or isinstance(m, ASFF_Detect)or isinstance(m, Decoupled_Detect) # is final layer, copy input as inplace fix
-        o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
-        t = time_sync()
-        for _ in range(10):
-            m(x.copy() if c else x)
-        dt.append((time_sync() - t) * 100)
-        if m == self.model[0]:
-            LOGGER.info(f"{'time (ms)':>10s} {'GFLOPs':>10s} {'params':>10s}  {'module'}")
-        LOGGER.info(f'{dt[-1]:10.2f} {o:10.2f} {m.np:10.0f}  {m.type}')
-        if c:
-            LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
+    
 
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
@@ -873,51 +863,40 @@ class Model(nn.Module):
             b[:, (0,1,2,bc+3)].data = old
             mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
-    def _print_biases(self):
-        m = self.model[-1]  # Detect() module
-        for mi in m.m:  # from
-            b = mi.bias.detach().view(m.na, -1).T  # conv.bias(255) to (3,85)
-            LOGGER.info(
-                ('%6g Conv2d.bias:' + '%10.3g' * 6) % (mi.weight.shape[1], *b[:5].mean(1).tolist(), b[5:].mean()))
+    # def _print_biases(self):
+        # m = self.model[-1]  # Detect() module
+        # for mi in m.m:  # from
+            # b = mi.bias.detach().view(m.na, -1).T  # conv.bias(255) to (3,85)
+            # LOGGER.info(
+                # ('%6g Conv2d.bias:' + '%10.3g' * 6) % (mi.weight.shape[1], *b[:5].mean(1).tolist(), b[5:].mean()))
 
-    # def _print_weights(self):
-    #     for m in self.model.modules():
-    #         if type(m) is Bottleneck:
-    #             LOGGER.info('%10.3g' % (m.w.detach().sigmoid() * 2))  # shortcut weights
+Model = DetectionModel  # retain YOLOv5 'Model' class for backwards compatibility
 
-    def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
-        LOGGER.info('Fusing layers... ')
-        for m in self.model.modules():
-            if isinstance(m, (Conv, DWConv)) and hasattr(m, 'bn'):
-                m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
-                delattr(m, 'bn')  # remove batchnorm
-                m.forward = m.forward_fuse  # update forward
-            elif isinstance(m, RepConv):
-                #print(f" fuse_repvgg_block")
-                m.fuse_repvgg_block()
-            elif isinstance(m, RepConv_OREPA):
-                #print(f" switch_to_deploy")
-                m.switch_to_deploy()    
-            elif isinstance(m, (IDetect, IAuxDetect)): ##add fuse layers
-                m.fuse()
-                m.forward = m.fuseforward    
-        self.info()
-        return self
 
-    def info(self, verbose=False, img_size=640):  # print model information
-        model_info(self, verbose, img_size)
+class ClassificationModel(BaseModel):
+    # YOLOv5 classification model
+    def __init__(self, cfg=None, model=None, nc=1000, cutoff=10):  # yaml, model, number of classes, cutoff index
+        super().__init__()
+        self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg)
 
-    def _apply(self, fn):
-        # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
-        self = super()._apply(fn)
-        m = self.model[-1]  # Detect()
-        if isinstance(m, Detect)or isinstance(m, ASFF_Detect) or isinstance(m, Decoupled_Detect) :
-            m.stride = fn(m.stride)
-            m.grid = list(map(fn, m.grid))
-            if isinstance(m.anchor_grid, list):
-                m.anchor_grid = list(map(fn, m.anchor_grid))
-        return self
+    def _from_detection_model(self, model, nc=1000, cutoff=10):
+        # Create a YOLOv5 classification model from a YOLOv5 detection model
+        if isinstance(model, DetectMultiBackend):
+            model = model.model  # unwrap DetectMultiBackend
+        model.model = model.model[:cutoff]  # backbone
+        m = model.model[-1]  # last layer
+        ch = m.conv.in_channels if hasattr(m, 'conv') else m.cv1.conv.in_channels  # ch into module
+        c = Classify(ch, nc)  # Classify()
+        c.i, c.f, c.type = m.i, m.f, 'models.common.Classify'  # index, from, type
+        model.model[-1] = c  # replace
+        self.model = model.model
+        self.stride = model.stride
+        self.save = []
+        self.nc = nc
 
+    def _from_yaml(self, cfg):
+        # Create a YOLOv5 classification model from a *.yaml file
+        self.model = None
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")

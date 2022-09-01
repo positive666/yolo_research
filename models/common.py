@@ -253,6 +253,15 @@ class DetectMultiBackend(nn.Module):
                 output_details = interpreter.get_output_details()  # outputs
             elif tfjs:
                 raise Exception('ERROR: YOLOv5 TF.js inference is not supported')    
+            else:
+                raise NotImplementedError(f'ERROR: {w} is not a supported format')   
+                
+         # class names
+        if 'names' not in locals():
+            names = yaml_load(data)['names'] if data else {i: f'class{i}' for i in range(999)}
+        if names[0] == 'n01440764' and len(names) == 1000:  # ImageNet
+            names = yaml_load(ROOT / 'data/ImageNet.yaml')['names']  # human-readable names    
+                
         self.__dict__.update(locals())  # assign all variables to self
 
     def forward(self, im, augment=False, visualize=False, val=False):
@@ -337,7 +346,12 @@ class DetectMultiBackend(nn.Module):
         xml |= xml2  # *_openvino_model or *.xml
         tflite &= not edgetpu  # *.tflite
         return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs
-        
+    
+    @staticmethod
+    def _load_metadata(f='path/to/meta.yaml'):
+        # Load metadata from meta.yaml if it exists
+        d = yaml_load(f)
+        return d['stride'], d['names']  # assign stride, names
         
 class Conv(nn.Module):
     # Standard convolution
