@@ -143,7 +143,6 @@ class Decoupled_Detect(nn.Module):
             yv, xv = torch.meshgrid(y, x)
         grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
         anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
-        print(anchor_grid)
         return grid, anchor_grid
         
 class ASFF_Detect(nn.Module):   #add ASFFV5 layer and Rfb 
