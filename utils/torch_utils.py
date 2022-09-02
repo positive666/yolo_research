@@ -238,7 +238,7 @@ def fuse_conv_and_bn(conv, bn):
     return fusedconv
 
 
-def model_info(model, verbose=False, img_size=640):
+def model_info(model, verbose=False, imgsz=640):
     # Model information. img_size may be int or list, i.e. img_size=640 or img_size=[640, 320]
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
     n_g = sum(x.numel() for x in model.parameters() if x.requires_grad)  # number gradients
@@ -250,12 +250,12 @@ def model_info(model, verbose=False, img_size=640):
                   (i, name, p.requires_grad, p.numel(), list(p.shape), p.mean(), p.std()))
 
     try:  # FLOPs
-        from thop import profile
-        stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32
-        img = torch.zeros((1, model.yaml.get('ch', 3), stride, stride), device=next(model.parameters()).device)  # input
-        flops = profile(deepcopy(model), inputs=(img,), verbose=False)[0] / 1E9 * 2  # stride GFLOPs
-        img_size = img_size if isinstance(img_size, list) else [img_size, img_size]  # expand if int/float
-        fs = ', %.1f GFLOPs' % (flops * img_size[0] / stride * img_size[1] / stride)  # 640x640 GFLOPs
+        p = next(model.parameters())
+        stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32  # max stride
+        im = torch.empty((1, p.shape[1], stride, stride), device=p.device)  # input image in BCHW format
+        flops = thop.profile(deepcopy(model), inputs=(im,), verbose=False)[0] / 1E9 * 2  # stride GFLOPs
+        imgsz = imgsz if isinstance(imgsz, list) else [imgsz, imgsz]  # expand if int/float
+        fs = f', {flops * imgsz[0] / stride * imgsz[1] / stride:.1f} GFLOPs'  # 640x640 GFLOPs
     except Exception:
         fs = ''
 
@@ -377,6 +377,17 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
     LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr})  with parameter groups "
                 f"{len(g[1])} weight (decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias")
     return optimizer
+
+def smart_hub_load(repo='ultralytics/yolov5', model='yolov5s', **kwargs):
+    # YOLOv5 torch.hub.load() wrapper with smart error/issue handling
+    if check_version(torch.__version__, '1.9.1'):
+        kwargs['skip_validation'] = True  # validation causes GitHub API rate limit errors
+    if check_version(torch.__version__, '1.12.0'):
+        kwargs['trust_repo'] = True  # argument required starting in torch 0.12
+    try:
+        return torch.hub.load(repo, model, **kwargs)
+    except Exception:
+        return torch.hub.load(repo, model, force_reload=True, **kwargs)
 
 def smart_resume(ckpt, optimizer, ema=None, weights='yolov5s.pt', epochs=300, resume=True):
     # Resume training from a partially trained checkpoint
