@@ -203,7 +203,7 @@ class LoadImages:
         self.auto = auto
         self.transforms = transforms  # optional
         if any(videos):
-            self.new_video(videos[0])  # new video
+            self._new_video(videos[0])  # new video  # new video
         else:
             self.cap = None
         assert self.nf > 0, f'No images or videos found in {p}. ' \
@@ -228,7 +228,7 @@ class LoadImages:
                 if self.count == self.nf:  # last video
                     raise StopIteration
                 path = self.files[self.count]
-                self.new_video(path)
+                self._new_video(path)
                 ret_val, img0 = self.cap.read()
 
             self.frame += 1
@@ -250,11 +250,23 @@ class LoadImages:
 
         return path, im, im0, self.cap, s
 
-    def new_video(self, path):
+    def _new_video(self, path):
         self.frame = 0
         self.cap = cv2.VideoCapture(path)
         self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.orientation = int(self.cap.get(cv2.CAP_PROP_ORIENTATION_META))  # rotation degrees
+        # self.cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)  # disable https://github.com/ultralytics/yolov5/issues/8493
 
+    def _cv2_rotate(self, im):
+        # Rotate a cv2 video manually
+        if self.orientation == 0:
+            return cv2.rotate(im, cv2.ROTATE_90_CLOCKWISE)
+        elif self.orientation == 180:
+            return cv2.rotate(im, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        elif self.orientation == 90:
+            return cv2.rotate(im, cv2.ROTATE_180)
+        return im
+        
     def __len__(self):
         return self.nf  # number of files
 
