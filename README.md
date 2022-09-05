@@ -5,6 +5,13 @@
   <img src=https://img.shields.io/github/watchers/positive666/yolov5_research.svg?style=social>
 </div> 
 
+<div align="center">
+<p>
+   <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
+   <img width="850" src="https://github.com/ultralytics/yolov5/releases/download/v1.0/splash.jpg"></a>
+</p>
+<br>
+
 ##  🌟 基于yolov5&&yolov7的改进库
 
 ***
@@ -29,7 +36,7 @@ news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolo
 ***
 任何技术都要讲究：时序性，所以要不断学习不断业务工程，保持自己的状态！
 
-工程部署：该仓库只属于研究探索，但是工程部署讲究简单高效、故可以参考我的Deepsteram SDK改的项目，集合了通用检测、人脸识别、OCR三个项目，高性能的部署AI框架开发逻辑，这个项目是我2021年整理并开源的，代码还未规范，但程序是没问题的。
+工程部署：该仓库只属于研究探索，但是工程部署讲究简单高效、故可以参考我的Deepstream SDK改的项目，集合了通用检测、人脸识别、OCR三个项目，高性能的部署AI框架开发逻辑，这个项目是我2021年整理并开源的，代码还未规范，但程序是没问题的。
 ##  工程部署 Why Deepstream?  
  DS_5.1&&Tensorrt7+ ：https://github.com/positive666/Deepstream_Project
 

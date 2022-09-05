@@ -177,7 +177,7 @@ class _RepeatSampler:
 
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
-    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None):
+    def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
             p = str(Path(p).resolve())
@@ -202,6 +202,7 @@ class LoadImages:
         self.mode = 'image'
         self.auto = auto
         self.transforms = transforms  # optional
+        self.vid_stride = vid_stride  # video frame-rate stride
         if any(videos):
             self._new_video(videos[0])  # new video  # new video
         else:
@@ -222,6 +223,7 @@ class LoadImages:
             # Read video
             self.mode = 'video'
             ret_val, img0 = self.cap.read()
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.vid_stride * (self.frame + 1))  # read at vid_stride
             while not ret_val:
                 self.count += 1
                 self.cap.release()
@@ -253,7 +255,7 @@ class LoadImages:
     def _new_video(self, path):
         self.frame = 0
         self.cap = cv2.VideoCapture(path)
-        self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)/ self.vid_stride)
         self.orientation = int(self.cap.get(cv2.CAP_PROP_ORIENTATION_META))  # rotation degrees
         # self.cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)  # disable https://github.com/ultralytics/yolov5/issues/8493
 
@@ -313,17 +315,12 @@ class LoadWebcam:  # for inference
 
 class LoadStreams:
     # YOLOv5 streamloader, i.e. `python detect.py --source 'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP streams`
-    def __init__(self, sources='streams.txt', img_size=640, stride=32, auto=True, transforms=None):
+    def __init__(self, sources='streams.txt', img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
         self.mode = 'stream'
         self.img_size = img_size
         self.stride = stride
-
-        if os.path.isfile(sources):
-            with open(sources) as f:
-                sources = [x.strip() for x in f.read().strip().splitlines() if len(x.strip())]
-        else:
-            sources = [sources]
-
+        self.vid_stride = vid_stride  # video frame-rate stride
+        sources = Path(sources).read_text().rsplit() if Path(sources).is_file() else [sources]
         n = len(sources)
         self.imgs, self.fps, self.frames, self.threads = [None] * n, [0] * n, [0] * n, [None] * n
         self.sources = [clean_str(x) for x in sources]  # clean source names for later
@@ -362,12 +359,12 @@ class LoadStreams:
 
     def update(self, i, cap, stream):
         # Read stream `i` frames in daemon thread
-        n, f, read = 0, self.frames[i], 1  # frame number, frame array, inference every 'read' frame
+        n, f = 0, self.frames[i]  # frame number, frame array
         while cap.isOpened() and n < f:
             n += 1
             # _, self.imgs[index] = cap.read()
             cap.grab()
-            if n % read == 0:
+            if n % self.vid_stride == 0:
                 success, im = cap.retrieve()
                 if success:
                     self.imgs[i] = im
