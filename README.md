@@ -10,8 +10,11 @@
    <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
    <img width="850" src="https://github.com/positive666/yolov5_research/figure/yolov.jpg"></a>
 </p>
-***
 
+
+
+
+<p>
 ##  🌟 基于yolov5&&yolov7
 
 ***
@@ -20,6 +23,7 @@ Feature
      实时的v5代码更新改动&&v7的适配
 	 早期集成的attention、self-attention维护和调试
 	 额外的网络结构和Tricks补充
+<p>
 
 news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
 
