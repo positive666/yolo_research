@@ -8,7 +8,7 @@
 <div align="center">
 <p>
    <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
-   <img width="850" src="https://github.com/positive666/yolov5_research/figure/yolov.jpg"></a>
+   <img width="850" src="figure/yolov.jpg"></a>
 </p>
 </div>
 
@@ -18,8 +18,7 @@
 
 ##  🌟 基于yolov5&&yolov7
 
-***
-Feature 
+# Feature 
 
      实时的v5代码更新改动&&v7的适配
 	 早期集成的attention、self-attention维护和调试
