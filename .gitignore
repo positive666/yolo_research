@@ -1,5 +1,37 @@
+Skip to content
+Search or jump to…
+Pulls
+Issues
+Marketplace
+Explore
+ 
+@positive666 
+ultralytics
+/
+yolov5
+Public
+Code
+Issues
+273
+Pull requests
+27
+Discussions
+Actions
+Projects
+1
+Wiki
+More
+yolov5/.gitignore
+@glenn-jocher
+glenn-jocher Ignore *_openvino_model/ dir (#6180)
+Latest commit 7cad659 on 4 Jan
+ History
+ 6 contributors
+@glenn-jocher@pasmai@imyhxy@edurenye@Borda@greg2451
+Executable File  256 lines (207 sloc)  3.89 KB
+
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
-*.jpg
+#*.jpg
 *.jpeg
 *.png
 *.bmp
@@ -255,3 +287,17 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 Footer
+© 2022 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Docs
+Contact GitHub
+Pricing
+API
+Training
+Blog
+About
+You have no unread notifications
