@@ -5,10 +5,12 @@
   <img src=https://img.shields.io/github/watchers/positive666/yolov5_research.svg?style=social>
 </div> 
 
+***
+
 <div align="center">
 <p>
    <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
-   <img width="850" src="figure/yolov.jpg"></a>
+   <img src="figure/yolov.png" width="75%"></a>
 </p>
 </div>
 
