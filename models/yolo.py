@@ -1081,8 +1081,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)    
-        elif m is ReOrg:
-            c2 = ch[f] * 4        
+        # elif m is ReOrg:
+            # c2 = ch[f] * 4        
         elif m in [MT]:
             if len(args) == 3:
                 args.append(False)
