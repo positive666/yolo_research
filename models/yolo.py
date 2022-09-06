@@ -132,7 +132,7 @@ class Decoupled_Detect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         
-    def _make_grid(self, nx=20, ny=20, i=0):
+    def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype
         shape = 1, self.na, ny, nx, 2  # grid shape
@@ -824,7 +824,7 @@ class DetectionModel(BaseModel):
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, Detect)or isinstance(m, ASFF_Detect)or isinstance(m, Decoupled_Detect):
+        if isinstance(m, Detect)or isinstance(m, ASFF_Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
@@ -840,8 +840,17 @@ class DetectionModel(BaseModel):
                 self._initialize_biases()  # only run once    
                 LOGGER.info('initialize_biases done') 
             except :
-                LOGGER.info('decoupled no biase ') 
-        if isinstance(m, IDetect):
+                LOGGER.info('decoupled no biase ')
+        elif isinstance(m, Decoupled_Detect):
+            s = 256  # 2x min stride
+            m.inplace = self.inplace
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.empty(1, ch, s, s))])  # forward
+            check_anchor_order(m)  # must be in pixel-space (not grid-space)
+            m.anchors /= m.stride.view(-1, 1, 1)
+            self.stride = m.stride
+            self._initialize_dh_biases()  # only run once
+
+        elif isinstance(m, IDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)
@@ -849,7 +858,7 @@ class DetectionModel(BaseModel):
             self.stride = m.stride
             self._initialize_biases()  # only run once
             # print('Strides: %s' % m.stride.tolist())
-        if isinstance(m, IAuxDetect):
+        elif isinstance(m, IAuxDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[:4]])  # forward
             #print(m.stride)
@@ -858,7 +867,7 @@ class DetectionModel(BaseModel):
             self.stride = m.stride
             self._initialize_aux_biases()  # only run once
             # print('Strides: %s' % m.stride.tolist())
-        if isinstance(m, IBin):
+        elif isinstance(m, IBin):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)
@@ -866,7 +875,7 @@ class DetectionModel(BaseModel):
             self.stride = m.stride
             self._initialize_biases_bin()  # only run once
             
-        if isinstance(m, IKeypoint):
+        elif isinstance(m, IKeypoint):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)
@@ -939,6 +948,20 @@ class DetectionModel(BaseModel):
             b[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
             b[:, 5:] += math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # cls
             mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+
+
+    def _initialize_dh_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
+        # https://arxiv.org/abs/1708.02002 section 3.3
+        # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
+        m = self.model[-1]  # Detect() module
+        for mi, s in zip(m.m, m.stride):  # from
+            reg_bias = mi.reg_preds.bias.view(m.na, -1).detach()
+            reg_bias += math.log(8 / (640 / s) ** 2)
+            mi.reg_preds.bias = torch.nn.Parameter(reg_bias.view(-1), requires_grad=True)
+
+            cls_bias = mi.cls_preds.bias.view(m.na, -1).detach()
+            cls_bias += math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # cls
+            mi.cls_preds.bias = torch.nn.Parameter(cls_bias.view(-1), requires_grad=True)
 
     def _initialize_aux_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
