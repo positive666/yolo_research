@@ -15,7 +15,7 @@
 
 
 
-##  🌟 基于yolov5&&yolov7
+##  🌟 基于yolov5&&yolov7(近期回归开源更新，项目重整优化！！！waiting)
 
 # Feature 
 
