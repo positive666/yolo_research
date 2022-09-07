@@ -264,29 +264,34 @@ class DetectMultiBackend(nn.Module):
                 
         self.__dict__.update(locals())  # assign all variables to self
 
-    def forward(self, im, augment=False, visualize=False, val=False):
+    def forward(self, im, augment=False, visualize=False):
         # YOLOv5 MultiBackend inference
         b, ch, h, w = im.shape  # batch, channel, height, width
+        if self.fp16 and im.dtype != torch.float16:
+            im = im.half()  # to FP16
+
         if self.pt:  # PyTorch
-            y = self.model(im, augment=augment, visualize=visualize)[0]
+            y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)
         elif self.jit:  # TorchScript
-            y = self.model(im)[0]
+            y = self.model(im)
         elif self.dnn:  # ONNX OpenCV DNN
             im = im.cpu().numpy()  # torch to numpy
             self.net.setInput(im)
             y = self.net.forward()
         elif self.onnx:  # ONNX Runtime
             im = im.cpu().numpy()  # torch to numpy
-            y = self.session.run([self.session.get_outputs()[0].name], {self.session.get_inputs()[0].name: im})[0]
+            y = self.session.run(self.output_names, {self.session.get_inputs()[0].name: im})
         elif self.xml:  # OpenVINO
             im = im.cpu().numpy()  # FP32
-            desc = self.ie.TensorDesc(precision='FP32', dims=im.shape, layout='NCHW')  # Tensor Description
-            request = self.executable_network.requests[0]  # inference request
-            request.set_blob(blob_name='images', blob=self.ie.Blob(desc, im))  # name=next(iter(request.input_blobs))
-            request.infer()
-            y = request.output_blobs['output'].buffer  # name=next(iter(request.output_blobs))
+            y = self.executable_network([im])[self.output_layer]
         elif self.engine:  # TensorRT
-            assert im.shape == self.bindings['images'].shape, (im.shape, self.bindings['images'].shape)
+            if self.dynamic and im.shape != self.bindings['images'].shape:
+                i_in, i_out = (self.model.get_binding_index(x) for x in ('images', 'output'))
+                self.context.set_binding_shape(i_in, im.shape)  # reshape if dynamic
+                self.bindings['images'] = self.bindings['images']._replace(shape=im.shape)
+                self.bindings['output'].data.resize_(tuple(self.context.get_binding_shape(i_out)))
+            s = self.bindings['images'].shape
+            assert im.shape == s, f"input size {im.shape} {'>' if self.dynamic else 'not equal to'} max model size {s}"
             self.binding_addrs['images'] = int(im.data_ptr())
             self.context.execute_v2(list(self.binding_addrs.values()))
             y = self.bindings['output'].data
@@ -323,7 +328,6 @@ class DetectMultiBackend(nn.Module):
             y[..., :4] *= [w, h, w, h]  # xywh normalized to pixels
 
         if isinstance(y, (list, tuple)):
-            y = torch.tensor(y, device=self.device)
             return self.from_numpy(y[0]) if len(y) == 1 else [self.from_numpy(x) for x in y]
         else:
             return self.from_numpy(y)
