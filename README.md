@@ -9,7 +9,7 @@
 <div align="center">
 <p>
    <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
-   <img src="figure/yolov.jpg" width="85%"></a>
+   <img src="data/images/yolov.jpg" width="85%"></a>
 </p>
 </div>
 
