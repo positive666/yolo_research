@@ -50,6 +50,7 @@ from utils.general import (LOGGER, check_amp, check_dataset, check_file, check_g
                            init_seeds, intersect_dicts, labels_to_class_weights, labels_to_image_weights, methods,
                            one_cycle, print_args, print_mutation, strip_optimizer)
 from utils.loggers import Loggers
+from utils.loggers.comet.comet_utils import check_comet_resume
 from utils.loggers.wandb.wandb_utils import check_wandb_resume
 from utils.loss import ComputeLoss, ComputeLossOTA,ComputeLossAuxOTA,ComputeLossBinOTA
 from utils.metrics import fitness
@@ -486,18 +487,17 @@ def parse_opt(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
-     
-    # Weights & Biases arguments
-    parser.add_argument('--entity', default=None, help='W&B: Entity')
-    parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='W&B: Upload data, "val" option')
-    parser.add_argument('--bbox_interval', type=int, default=-1, help='W&B: Set bounding-box image logging interval')
-    parser.add_argument('--artifact_alias', type=str, default='latest', help='W&B: Version of dataset artifact to use')
+        
+    # Logger arguments
+    parser.add_argument('--entity', default=None, help='Entity')
+    parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='Upload data, "val" option')
+    parser.add_argument('--bbox_interval', type=int, default=-1, help='Set bounding-box image logging interval')
+    parser.add_argument('--artifact_alias', type=str, default='latest', help='Version of dataset artifact to use')
     # swin float()
     parser.add_argument('--swin_float', action='store_true', help='swin not use half to train/Val')
     parser.add_argument('--aux_ota_loss', action='store_true', help='swin not use half to train/Val')
     #parser.add_argument('--ota_match', action='store_true', help='swin not use half to train/Val')
-    opt = parser.parse_known_args()[0] if known else parser.parse_args()
-    return opt
+    return parser.parse_known_args()[0] if known else parser.parse_args()
 
 
 def main(opt, callbacks=Callbacks()):
@@ -507,8 +507,8 @@ def main(opt, callbacks=Callbacks()):
         check_git_status()
         check_requirements(exclude=['thop'])
 
-    # Resume
-    if opt.resume and not (check_wandb_resume(opt) or opt.evolve):  # resume an interrupted run
+    # Resume (from specified or most recent last.pt)
+    if opt.resume and not check_wandb_resume(opt) and not check_comet_resume(opt) or opt.evolve:
         last = Path(opt.resume if isinstance(opt.resume, str) else get_latest_run())  # specified or most recent last.pt
         assert last.is_file(), f'ERROR: --resume checkpoint {last} does not exist'
         opt_yaml = last.parent.parent / 'opt.yaml'  # train options yaml
@@ -588,7 +588,8 @@ def main(opt, callbacks=Callbacks()):
             hyp = yaml.safe_load(f)  # load hyps dict
             if 'anchors' not in hyp:  # anchors commented in hyp.yaml
                 hyp['anchors'] = 3
-                
+         if opt.noautoanchor:
+            del hyp['anchors'], meta['anchors']       
         opt.noval, opt.nosave, save_dir = True, True, Path(opt.save_dir)  # only val/save final epoch
         # ei = [isinstance(x, (int, float)) for x in hyp.values()]  # evolvable indices
         evolve_yaml, evolve_csv = save_dir / 'hyp_evolve.yaml', save_dir / 'evolve.csv'
@@ -646,7 +647,7 @@ def run(**kwargs):
     for k, v in kwargs.items():
         setattr(opt, k, v)
     main(opt)
-
+    return opt
 
 if __name__ == "__main__":
     opt = parse_opt()
