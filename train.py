@@ -348,7 +348,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 pbar.set_description(('%10s' * 2 + '%10.4g' * 5) %
                                         (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                                         
-                callbacks.run('on_train_batch_end', model,ni, imgs, targets, paths)
+                callbacks.run('on_train_batch_end', model,ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
             # end batch ------------------------------------------------------------------------------------------------
