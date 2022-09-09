@@ -31,7 +31,7 @@ Latest commit 7cad659 on 4 Jan
 Executable File  256 lines (207 sloc)  3.89 KB
 
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
-#*.jpg
+*.jpg
 *.jpeg
 *.png
 *.bmp
@@ -58,7 +58,7 @@ Executable File  256 lines (207 sloc)  3.89 KB
 storage.googleapis.com
 runs/*
 data/*
-data/images/*
+#data/images/*
 !data/*.yaml
 !data/hyps
 !data/scripts
