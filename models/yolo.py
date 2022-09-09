@@ -370,7 +370,7 @@ class IDetect(nn.Module):
 
         # fuse ImplicitM and Convolution
         for i in range(len(self.m)):
-            with torch.no_grad():   
+            with torch.no_grad():
                 c1,c2, _,_ = self.im[i].implicit.shape
                 self.m[i].bias *= self.im[i].implicit.reshape(c2)
                 self.m[i].weight *= self.im[i].implicit.transpose(0,1)
@@ -573,8 +573,6 @@ class IBin(nn.Module):
                 pw = self.w_bin_sigmoid.forward(y[..., 2:24]) * self.anchor_grid[i][..., 0]
                 ph = self.h_bin_sigmoid.forward(y[..., 24:46]) * self.anchor_grid[i][..., 1]
 
-                #y[..., 0] = px
-                #y[..., 1] = py
                 y[..., 2] = pw
                 y[..., 3] = ph
                 
@@ -720,6 +718,7 @@ class MT(nn.Module):
         #print(x[2].shape)
         #print([a.shape for a in x])
         #exit()
+        
         # x = x.copy()  # for profiling
         z = []  # inference output
         za = []
@@ -778,14 +777,14 @@ class MT(nn.Module):
         return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
 
 
-
-
 class BaseModel(nn.Module):
     # YOLOv5 base model
     def forward(self, x, profile=False, visualize=False):
+        
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
     def _forward_once(self, x, profile=False, visualize=False):
+    
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
@@ -797,9 +796,40 @@ class BaseModel(nn.Module):
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         return x
+    def forward_once_mask(self, x, profile=False):
+        y, dt = [], []  # outputs
+        for m in self.model:
+            if m.f != -1:  # if not from previous layer
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+
+            if not hasattr(self, 'traced'):
+                self.traced=False
+
+            if self.traced:
+                if isinstance(m, Detect) or isinstance(m, IDetect) or isinstance(m, IAuxDetect) or isinstance(m, IKeypoint):
+                    break
+
+            if profile:
+                c = isinstance(m, (Detect, IDetect, IAuxDetect, IBin))
+                o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPS
+                for _ in range(10):
+                    m(x.copy() if c else x)
+               # t = time_synchronized()
+                for _ in range(10):
+                    m(x.copy() if c else x)
+                #dt.append((time_synchronized() - t) * 100)
+                print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
+            #
+            x = m(x)  # run
+            #print(x[0].shape)
+            y.append(x if m.i in self.save else None)  # save output
+
+        if profile:
+            print('%.1fms total' % sum(dt))
+        return x
 
     def _profile_one_layer(self, m, x, dt):
-        c = isinstance(m, Detect) or isinstance(m, ASFF_Detect)or isinstance(m, Decoupled_Detect) # is final layer, copy input as inplace fix
+        c = m == self.model[-1]  # is final layer, copy input as inplace fix
         o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
         t = time_sync()
         for _ in range(10):
@@ -881,11 +911,10 @@ class DetectionModel(BaseModel):
                     # LOGGER.info('decoupled done') 
             # except:    
                 # pass
-            try :
-                self._initialize_biases()  # only run once    
-                LOGGER.info('initialize_biases done') 
-            except :
-                LOGGER.info('decoupled no biase ')
+          
+            self._initialize_biases()  # only run once    
+             #   LOGGER.info('initialize_biases done') 
+           
         elif isinstance(m, Decoupled_Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
@@ -928,6 +957,19 @@ class DetectionModel(BaseModel):
             self.stride = m.stride
             self._initialize_biases_kpt()  # only run once
             # print('Strides: %s' % m.stride.tolist())    
+
+        elif isinstance(m, MT):
+            s = 256  # 2x min stride
+            temp = self.forward(torch.zeros(1, ch, s, s))
+            #print("xxx:",temp)
+            if isinstance(temp, list):
+                temp = temp[0]
+            m.stride = torch.tensor([s / x.shape[-2] for x in temp["bbox_and_cls"]])  # forward
+            check_anchor_order(m)
+            m.anchors /= m.stride.view(-1, 1, 1)
+            self.stride = m.stride
+            self._initialize_biases()
+
         # Init weights, biases
         initialize_weights(self)
         self.info()
@@ -938,6 +980,8 @@ class DetectionModel(BaseModel):
             return self._forward_augment(x)  # augmented inference, None
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
+ 
+    
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width
         s = [1, 0.83, 0.67]  # scales
@@ -1096,7 +1140,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in (Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,DownC,Stem,
+        if m in (nn.Conv2d, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,DownC,Stem,
                  CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                   RepConv, RepConv_OREPA,RepBottleneck, RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC,  
                  Res, ResCSPA, ResCSPB, ResCSPC, 
@@ -1127,30 +1171,22 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum([ch[x] for x in f])
+        elif m is Chuncat:
+            c2 = sum([ch[x] for x in f])    
         elif m is Concat_bifpn:
             c2 = max([ch[x] for x in f])
         elif m is Shortcut:
             c2 = ch[f[0]]
         elif m is Foldcut:
             c2 = ch[f] // 2    
-        # elif m is Detect :
-            # args.append([ch[x] for x in f])
-            # if isinstance(args[1], int):  # number of anchors
-                # args[1] = [list(range(args[1] * 2))] * len(f)
-        # elif m is ASFF_Detect :
-            # args.append([ch[x] for x in f])
-            # if isinstance(args[1], int):  # number of anchors
-                # args[1] = [list(range(args[1] * 2))] * len(f)
-        # elif m is Decoupled_Detect :
-            # args.append([ch[x] for x in f])
-            # if isinstance(args[1], int):  # number of anchors
-                # args[1] = [list(range(args[1] * 2))] * len(f)   
         elif m in [Detect, ASFF_Detect, Decoupled_Detect, V7_Detect, IDetect, IAuxDetect, IBin,IKeypoint]:    
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)    
-        # elif m is ReOrg:
-            # c2 = ch[f] * 4        
+        elif m is ReOrg:
+            c2 = ch[f] * 4
+        elif m in [Merge]:
+            c2 = args[0]            
         elif m in [MT]:
             if len(args) == 3:
                 args.append(False)
@@ -1159,6 +1195,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
+        elif m is Refine:
+            args.append([ch[x] for x in f])    
+            c2 = args[0]
         else:
             c2 = ch[f]
 
@@ -1173,6 +1212,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             ch = []
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
+    
 
 
 if __name__ == '__main__':
