@@ -88,6 +88,28 @@ class Detect(nn.Module):
         grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
         anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
         return grid, anchor_grid
+
+
+class Decouple(nn.Module):
+    # Decoupled convolution
+    def __init__(self, c1, nc=80, na=3):  # ch_in, num_classes, num_anchors
+        super().__init__()
+        c_ = min(c1, 256)  # min(c1, nc * na)
+        self.na = na  # number of anchors
+        self.nc = nc  # number of classes
+        self.a = Conv(c1, c_, 1)
+        c = [int(x + na * 5) for x in (c_ - na * 5) * torch.linspace(1, 0, 4)]  # linear channel descent
+
+        self.b1, self.b2, self.b3 = Conv(c_, c[1], 3), Conv(c[1], c[2], 3), nn.Conv2d(c[2], na * 5, 1)  # vc
+
+        self.c1, self.c2, self.c3 = Conv(c_, c_, 1), Conv(c_, c_, 1), nn.Conv2d(c_, na * nc, 1)  # cls
+
+    def forward(self, x):
+        bs, nc, ny, nx = x.shape  # BCHW
+        x = self.a(x)
+        b = self.b3(self.b2(self.b1(x)))
+        c = self.c3(self.c2(self.c1(x)))
+        return torch.cat((b.view(bs, self.na, 5, ny, nx), c.view(bs, self.na, self.nc, ny, nx)), 2).view(bs, -1, ny, nx)  
   
 class Decoupled_Detect(nn.Module):
     stride = None  # strides computed during build
@@ -104,7 +126,7 @@ class Decoupled_Detect(nn.Module):
         self.grid = [torch.zeros(1)] * self.nl  # init grid
         self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)      
-        self.m=nn.ModuleList(DecoupledHead(x,nc,anchors) for x in ch) 
+        self.m=nn.ModuleList(Decouple(x, self.nc, self.na)  for x in ch)   #yolov5 provide ,  old Decouple too much FLOP
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
         
         
@@ -987,13 +1009,19 @@ class DetectionModel(BaseModel):
         # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
         m = self.model[-1]  # Detect() module
         for mi, s in zip(m.m, m.stride):  # from
-            reg_bias = mi.reg_preds.bias.view(m.na, -1).detach()
-            reg_bias += math.log(8 / (640 / s) ** 2)
-            mi.reg_preds.bias = torch.nn.Parameter(reg_bias.view(-1), requires_grad=True)
+            # reg_bias = mi.reg_preds.bias.view(m.na, -1).detach()
+            # reg_bias += math.log(8 / (640 / s) ** 2)
+            # mi.reg_preds.bias = torch.nn.Parameter(reg_bias.view(-1), requires_grad=True)
 
-            cls_bias = mi.cls_preds.bias.view(m.na, -1).detach()
-            cls_bias += math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # cls
-            mi.cls_preds.bias = torch.nn.Parameter(cls_bias.view(-1), requires_grad=True)
+            # cls_bias = mi.cls_preds.bias.view(m.na, -1).detach()
+            # cls_bias += math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # cls
+            # mi.cls_preds.bias = torch.nn.Parameter(cls_bias.view(-1), requires_grad=True)
+            b = mi.b3.bias.view(m.na, -1)
+            b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            mi.b3.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            b = mi.c3.bias.data
+            b += math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # cls
+            mi.c3.bias = torch.nn.Parameter(b, requires_grad=True)
 
     def _initialize_aux_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
