@@ -113,7 +113,18 @@ class Refine(nn.Module):
                 r_p = F.interpolate(r_p, r.size()[2:], mode="bilinear", align_corners=False)
                 r = r + r_p
         return r
+        
+class Proto(nn.Module):
+    # YOLOv5 mask Proto module for segmentation models
+    def __init__(self, c1, c_=256, c2=32):  # ch_in, number of protos, number of masks
+        super().__init__()
+        self.cv1 = Conv(c1, c_, k=3)
+        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
+        self.cv2 = Conv(c_, c_, k=3)
+        self.cv3 = Conv(c_, c2)
 
+    def forward(self, x):
+        return self.cv3(self.cv2(self.upsample(self.cv1(x))))
       
         
 class DetectMultiBackend(nn.Module):
