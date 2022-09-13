@@ -990,7 +990,7 @@ class AutoShape(nn.Module):
         self.dmb = isinstance(model, DetectMultiBackend)  # DetectMultiBackend() instance
         self.pt = not self.dmb or model.pt  # PyTorch model
         self.model = model.eval()
-        m.export = True  # do not output loss values
+       # m.export = True  # do not output loss values
         
         if self.pt:
             m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()

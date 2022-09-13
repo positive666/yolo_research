@@ -153,7 +153,7 @@ if __name__ == '__main__':
         np.zeros((320, 640, 3))]  # numpy
 
     # Inference
-    results = model(imgs, size=320)  # batched inference
+    results = model(imgs)  # batched inference
 
     # Results
     results.print()
