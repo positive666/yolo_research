@@ -966,7 +966,6 @@ class DetectionModel(BaseModel):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, ISegment, IRSegment)) else self.forward(x)
-            #print()
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 1)
@@ -986,7 +985,6 @@ class DetectionModel(BaseModel):
         elif isinstance(m, IAuxDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[:4]])  # forward
-            #print(m.stride)
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
@@ -1012,7 +1010,7 @@ class DetectionModel(BaseModel):
         elif isinstance(m, MT):
             s = 256  # 2x min stride
             temp = self.forward(torch.zeros(1, ch, s, s))
-            #print("xxx:",temp)
+            
             if isinstance(temp, list):
                 temp = temp[0]
             m.stride = torch.tensor([s / x.shape[-2] for x in temp["bbox_and_cls"]])  # forward
@@ -1189,10 +1187,9 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
-    if d['nkpt']:
+    nkpt=0
+    if 'nkpt' in d.keys():
         nkpt=d['nkpt']
-    else:
-        nkpt=0
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5 + 2*nkpt)   # number of outputs = anchors * (classes + 5)
 
