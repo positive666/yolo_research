@@ -18,8 +18,12 @@
 ##  <div align="left">🌟 基于yolov5&&yolov7(近期回归开源更新，项目重整优化！！！waiting)</div>
 
 
-## <div align="left">⭐新闻板块【更新和计划】</div>
+更新升级中.....
 
+### <div align="left">⭐新闻板块【更新和计划】</div>
+
+	
+	- 分类、检测、分割、关键点检测基本整合完毕，工程结构精简化中，关键点检测训练正常已经验证，分割待调试，火速迭代中
 	- 分割代码结合V5和V7的代码进行了合并DEBUG调试，训练部分待验证，另外注意力层训练过程中，没法收敛或者NAN的情况，排除代码问题，需要在超参数YAML里，先对学习衰减率从0.1变成0.2 ，比如GAM，因为用了注意力头训练周期加到400EPOCH左右就可以训练。
 	
 	- 去年的decoupled结构虽然能提点，不过FLOPS增加的太多，目前用V5作者分支的解耦头替换，效果待验证。
@@ -28,6 +32,7 @@
 <p>
 
 # Feature 🚀 
+
 
      以最新的V5代码风格简化，集成High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，目前在快速迭代中
      实时的v5代码更新改动&&v7的适配
@@ -65,7 +70,7 @@ news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolo
 ***
 ## <div align="center">往期更新</div>
 
-<details open>
+<details>
 <summary>更新记录</summary>
 
 - 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
