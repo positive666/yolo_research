@@ -15,26 +15,31 @@
 
 
 
-##  🌟 基于yolov5&&yolov7(近期回归开源更新，项目重整优化！！！waiting)
+##  <div align="left">🌟 基于yolov5&&yolov7(近期回归开源更新，项目重整优化！！！waiting)</div>
 
 
-#更新版块【实时更新说明和近期计划】
+## <div align="left">⭐新闻板块【更新和计划】</div>
 
-	1.分割代码结合V5和V7的代码进行了合并DEBUG调试，训练部分待验证，另外注意力层训练过程中，没法收敛或者NAN的情况，排除代码问题，需要在超参数YAML里，先对学习衰减率从0.1变成0.2 ，比如GAM，因为用了注意力头训练周期加到400EPOCH左右就可以训练。
-
-	2.去年的decoupled结构虽然能提点，不过FLOPS增加的太多，目前用V5作者分支的解耦头替换，效果待验证。
-
-	3.融合了代码做了部分的优化，这里看了下V7的代码优化较差，后续会集成精简版本的分类、分割、检测、POSE检测的结构，目前已经完成了一部分工作，更新频繁有问题欢迎反馈和提供实验结果。
+	- 分割代码结合V5和V7的代码进行了合并DEBUG调试，训练部分待验证，另外注意力层训练过程中，没法收敛或者NAN的情况，排除代码问题，需要在超参数YAML里，先对学习衰减率从0.1变成0.2 ，比如GAM，因为用了注意力头训练周期加到400EPOCH左右就可以训练。
+	
+	- 去年的decoupled结构虽然能提点，不过FLOPS增加的太多，目前用V5作者分支的解耦头替换，效果待验证。
+	
+	- 融合了代码做了部分的优化，这里看了下V7的代码优化较差，后续会集成精简版本的分类、分割、检测、POSE检测的结构，目前已经完成了一部分工作，更新频繁有问题欢迎反馈和提供实验结果。
 <p>
 
-# Feature 
+# Feature 🚀 
 
+     以最新的V5代码风格简化，集成High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，目前在快速迭代中
      实时的v5代码更新改动&&v7的适配
-	 早期集成的attention、self-attention维护和调试
-	 额外的网络结构和Tricks补充
-<p>
+     早期集成的attention、self-attention维护和调试
+     额外的网络结构和Tricks补充
+
+
 
 news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
+
+
+
 
 简单来说,V7是V5的一次扩充版本,详情可以看：
 [CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
@@ -54,11 +59,14 @@ news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolo
  DS_5.1&&Tensorrt7+ ：https://github.com/positive666/Deepstream_Project
 
      1.英伟达提供的Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
-	 2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，推荐Yolov5nano或者nanodetplus,(工程上主流是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代。还有就是如何使用SGD炼丹的经验了)
-	 还有就是deepstream的普及，网上很多剪枝版本我也看了值得学习，但是工程不只在于学习，而在于成本和结果。
-	 3.x86和Jeston都可以部署，既然有一站式解决方案，我觉得工程和研究应用是完全不同的操作思路，精简高效达到目的.deepstream全做了并完成降维打击 ，当然也需要一定的综合开发能力。
+     2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，推荐Yolov5nano或者nanodetplus,(工程上主流是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代。还有就是如何使用SGD炼丹的经验了)
+     还有就是deepstream的普及，网上很多剪枝版本我也看了值得学习，但是工程不只在于学习，而在于成本和结果。
+     3.x86和Jeston都可以部署，既然有一站式解决方案，我觉得工程和研究应用是完全不同的操作思路，精简高效达到目的.deepstream全做了并完成降维打击 ，当然也需要一定的综合开发能力。
 ***
-最近更新：
+## <div align="center">往期更新</div>
+
+<details open>
+<summary>更新记录</summary>
 
 - 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
 
@@ -95,36 +103,41 @@ news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolo
 - 2021.2.10  全网首发的YOLOV5魔改，ASFF检测头封装加入、注意力机制CBAM、CooRD、等注意力算子引入，并介绍了通用修改方式
 ***
 
+</details>
 
-   
-##  Run 
-***   
+
+
+
+</details>
+
+<details>
+<summary>Training</summary>
 
 - 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
-	  
+	
 	if your run Custom swinV2 ,add --swin_float
-	  
+	
 - 2. run yolov7-aux model train ,your model must P6-model !
 	  
       python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
-		
+	
 - 3. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
 - 4. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
 - 5. see reparameterization.py	
 
-***
-	  
+
+
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
   目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
   [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
 
 ***
-   
+
    不间断保持更新和汇总实验：算子引入，LOSS改进，针对网络结构进行不同的任务的最优结构汇总，样本匹配实验，业务拓展等等
    有针对于自己数据集或者公开数据集的效果请联系，目前有很多实验没做，平时工作繁忙，保证定期更新，也希望大家能一起探索最优结构和实验效果。
-   
+
 ***
 
 
