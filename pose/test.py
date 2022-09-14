@@ -8,14 +8,19 @@ import numpy as np
 import torch
 import yaml
 from tqdm import tqdm
-
+import sys
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[1]  # YOLOv5 root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from models.experimental import attempt_load
-from utils.datasets import create_dataloader
+from utils.dataloaders import create_dataloader
 from utils.general import coco80_to_coco91_class, check_dataset, check_file, check_img_size, check_requirements, \
     box_iou, non_max_suppression, scale_coords, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
 from utils.metrics import ap_per_class, ConfusionMatrix
-from utils.plots import plot_images, output_to_target, plot_study_txt
-from utils.torch_utils import select_device, time_synchronized
+from utils.plots import output_to_target, plot_images, plot_val_study
+from utils.torch_utils import select_device, smart_inference_mode
 import cv2
 
 
