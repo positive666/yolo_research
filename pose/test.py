@@ -20,10 +20,10 @@ from utils.general import coco80_to_coco91_class, check_dataset, check_file, che
     box_iou, non_max_suppression, scale_coords, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
 from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import output_to_target, plot_images, plot_val_study
-from utils.torch_utils import select_device, smart_inference_mode
+from utils.torch_utils import select_device, smart_inference_mode,time_sync
 import cv2
 
-
+@torch.no_grad()
 def test(data,
          weights=None,
          batch_size=32,
@@ -109,11 +109,12 @@ def test(data,
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-    p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
+    p, r, f1, mp, mr, map50, map, t0, t1,t2 = 0., 0., 0., 0., 0., 0., 0., 0., 0.,0.
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     #jdict_kpt = [] if kpt_label else None
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
+        t_ = time_sync()
         img = img.to(device, non_blocking=True)
         if dump_img:
             dst_file = os.path.join(save_dir, 'dump_img', 'images', 'val2017', Path(paths[0]).stem + '.png')
@@ -124,35 +125,34 @@ def test(data,
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
-        with torch.no_grad():
-            # Run model
-            t = time_synchronized()
-            out, train_out = model(img, augment=augment)  # inference and training outputs
-            if flip_test:
+        t = time_sync()
+        t0 += t - t_
+        # Run model
+        out, train_out = model(img, augment=augment)  # inference and training outputs
+        if flip_test:
                 img_flip = torch.flip(img,[3])
                 model.model[-1].flip_test = True
                 out_flip, train_out_flip = model(img_flip, augment=augment)  # inference and training outputs
                 model.model[-1].flip_test = False
                 fuse1 = (out + out_flip)/2.0
                 out = torch.cat((out,fuse1), axis=1)
-            out = out[...,:6] if not kpt_label else out
-            targets = targets[..., :6] if not kpt_label else targets
-            t0 += time_synchronized() - t
-
+        out = out[...,:6] if not kpt_label else out
+        targets = targets[..., :6] if not kpt_label else targets
+        t1 += time_sync() - t
             # Compute loss
-            if compute_loss:
+        if compute_loss:
                 loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
-
+    
             # Run NMS
-            if kpt_label:
+        if kpt_label:
                 num_points = (targets.shape[1]//2 - 1)
                 targets[:, 2:] *= torch.Tensor([width, height]*num_points).to(device)  # to pixels
-            else:
+        else:
                 targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
-            lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
-            t = time_synchronized()
-            out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls, kpt_label=kpt_label, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'])
-            t1 += time_synchronized() - t
+        lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
+        t = time_sync()
+        out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls, kpt_label=kpt_label, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'])
+        t2 += time_sync() - t
 
         # Statistics per image
         for si, pred in enumerate(out):
@@ -293,8 +293,8 @@ def test(data,
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Print speeds
-    t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (imgsz, imgsz, batch_size)  # tuple
-    if not training:
+    t = tuple(x / seen * 1E3 for x in (t0, t1, t2))  # speeds per image
+    if not training :
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
     # Plots
