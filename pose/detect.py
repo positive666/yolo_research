@@ -8,21 +8,23 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 from numpy import random
-import sys
+import sys 
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-
 from models.experimental import attempt_load
-from utils.datasets import LoadStreams, LoadImages
-from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
-    scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
-from utils.plots import colors, plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized
-
+from pose.datasets import LoadStreams, LoadImages
+from utils.general import check_img_size, check_requirements, check_imshow,   \
+    scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
+from utils.plots import colors, plot_one_box,save_one_box
+from utils.torch_utils import select_device, time_sync
+from utils.general import non_max_suppression_keypoint as non_max_suppression
+#from pose.gen2 import save_one_box
+from models.common import DetectMultiBackend
 
 def detect(opt):
     source, weights, view_img, save_txt, imgsz, save_txt_tidl, kpt_label = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.save_txt_tidl, opt.kpt_label
@@ -40,8 +42,8 @@ def detect(opt):
     half = device.type != 'cpu' and not save_txt_tidl  # half precision only supported on CUDA
 
     # Load model
-    model = attempt_load(weights, map_location=device)  # load FP32 model
-    stride = int(model.stride.max())  # model stride
+    model = DetectMultiBackend(weights, device=device, dnn=False, data='data/coco128.yaml', fp16=half)
+    stride, names, pt = model.stride, model.names, model.pt
     if isinstance(imgsz, (list,tuple)):
         assert len(imgsz) ==2; "height and width of image has to be specified"
         imgsz[0] = check_img_size(imgsz[0], s=stride)
@@ -53,10 +55,10 @@ def detect(opt):
         model.half()  # to FP16
 
     # Second-stage classifier
-    classify = False
-    if classify:
-        modelc = load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
+    #classify = False
+    # if classify:
+    #     modelc = load_classifier(name='resnet101', n=2)  # initialize
+    #     modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -79,16 +81,17 @@ def detect(opt):
             img = img.unsqueeze(0)
 
         # Inference
-        t1 = time_synchronized()
-        pred = model(img, augment=opt.augment)[0]
+        t1 = time_sync()
+       # visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+        pred = model(img, augment=opt.augment)
         print(pred[...,4].max())
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms, kpt_label=kpt_label)
-        t2 = time_synchronized()
+        t2 = time_sync()
 
         # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
+        #if classify:
+          #  pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
