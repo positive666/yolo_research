@@ -854,7 +854,7 @@ def non_max_suppression(prediction,
                         agnostic=False,
                         multi_label=False,
                         labels=(),
-                        max_det=300,kpt_label=False, nkpt=None):
+                        max_det=300,kpt_label=False,nc=None, nkpt=None):
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping bounding boxes
 
     Returns:
@@ -865,7 +865,8 @@ def non_max_suppression(prediction,
         prediction = prediction[0]  # select only inference output
         
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - 5  if not kpt_label else prediction.shape[2] - 56 # number of classes
+    if nc is None:
+        nc = prediction.shape[2] - 5  if not kpt_label else prediction.shape[2] - 56 # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
 
     # Checks
