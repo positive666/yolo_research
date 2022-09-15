@@ -26,7 +26,7 @@ FILE = Path(__file__).absolute()
 sys.path.append(FILE.parents[0].as_posix())  # add yolov5/ to path
 
 import val_kp as val
-from models.yolo import Model
+from models.yolo import kP_DetectionModel as Model
 from utils.autoanchor import check_anchors
 from pose.dataloaders import create_dataloader,check_dataset
 from utils.general import labels_to_class_weights, increment_path, labels_to_image_weights, init_seeds, \
