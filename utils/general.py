@@ -835,16 +835,21 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None,kpt_label=False,
     return coords
 
 
-def clip_coords(boxes, shape):
+def clip_coords(boxes, shape,step=None):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
-    if isinstance(boxes, torch.Tensor):  # faster individually
+    
+    if step is not  None:
+        boxes[:, 0::step].clamp_(0, img_shape[1])  # x1
+        boxes[:, 1::step].clamp_(0, img_shape[0])  # y1
+
+    elif isinstance(boxes, torch.Tensor):  # faster individually
         boxes[:, 0].clamp_(0, shape[1])  # x1
         boxes[:, 1].clamp_(0, shape[0])  # y1
         boxes[:, 2].clamp_(0, shape[1])  # x2
         boxes[:, 3].clamp_(0, shape[0])  # y2
     else:  # np.array (faster grouped)
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, shape[1])  # x1, x2
-        boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
+        boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2  
 
 
 def non_max_suppression(prediction,
