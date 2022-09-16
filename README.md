@@ -167,7 +167,7 @@ python pose/detect.py --weights pose/pose_weights/yolov7-w6-pose.pt  --source  d
 ```
 
 ##  <div align="center">分割篇</div>
-##  <div align="center">分类篇</div>
+##  <div align="center">分类篇yolov5官方版本</div>
 YOLOv5 [release v6.2](https://github.com/ultralytics/yolov5/releases) brings support for classification model training, validation, prediction and export! We've made training classifier models super simple. Click below to get started.
 
 <details>
@@ -241,7 +241,8 @@ Export a group of trained YOLOv5s-cls, ResNet and EfficientNet models to ONNX an
 python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --include onnx engine --img 224
 ```
 </details>
-## <div align="left">历史更新</div>
+
+##<div align="left">历史更新</div>
 
 <details>
 <summary>更新记录</summary>
