@@ -64,8 +64,6 @@ pip install -r requirements.txt  # install
 
 ## <div align="center">目标检测篇</div>
 
-
-
 <details>
 <summary>Inference with detect.py</summary>
 
@@ -79,8 +77,10 @@ python detect.py --source 0  # webcam     --weights <your model weight>
                           'https://youtu.be/Zgi9g1ksQHc'  # YouTube
                           'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP stream
 ```
+</details>  
 
 yolov7 官方的訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作和Focus没本质区别，所以删掉需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去，还有一种方式是遍历Reorg的权重把它替换掉) 提取码：v7v7
+
 ###  Train
 
 see train.py args ,command as :
@@ -125,7 +125,9 @@ Then use the deploy model to load the weights of your training, change the index
 </details>
 
 
-## <div align="center">关键点检测篇</div>
+
+
+##  <div align="center">关键点检测篇</div>
 
 <details>
 <summary>数据集构建</summary>
