@@ -31,7 +31,6 @@
 
 # Feature 🚀 
 
-
      - 基于torch以最新的yoloV5工程风格精简融合High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，删除额外的三方库依赖，快速迭代
      
      - 实时的v5代码更新改动&&v7的适配
@@ -41,26 +40,21 @@
      - 额外的网络结构和Tricks补充
 
 [CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
-
-
-(保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据和結果~)
+(保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配....  欢迎提供实验数据和結果~)
 
 对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；而且transfromer是很难发生过拟合或者说不存在，动态特性确实更具泛化性，常规情况中优先考虑你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性，其次扩充构建相应的辅助分支加入特征属性描述。
-
-任何技术都要讲究：时序性，所以要不断学习不断业务工程，保持自己的状态！
 声明：这一年里有很多朋友用修改的idea方式以及注意力和设计结构去做Paper，不用咨询我意见：一切free！有成效自己论文开源随便，与我无关，只是希望各位能把实验数据反馈给我，因为平时工作业务比较忙，实验的时间不够。也是借此目的来和大家一起学习交流。
 
 <details open>
 <summary>Install</summary>
-Clone repo and install [requirements.txt](https://github.com/positive666/yolov5_research/requirements.txt) in a
-[**Python>=3.7.0**](https://www.python.org/) environment, including
-[**PyTorch>=1.7**](https://pytorch.org/get-started/locally/).
+Clone repo and install [requirements.txt](https://github.com/positive666/yolov5_research/requirements.txt) 
 
 ```bash
 git clone https://github.com/positive666/yolov5_research  # clone
 cd yolov5
 pip install -r requirements.txt  # install
 ```
+</details>
 
 ## <div align="center">目标检测篇</div>
 
@@ -123,8 +117,6 @@ Then use the deploy model to load the weights of your training, change the index
    python reparameterization.py  --weights <yolov7.pt,yolov7e6e.pt.....>  --name <model name > --save_file   models/v7_cfg/deploy  --cfg <model.yaml>
 ```
 </details>
-
-
 
 
 ##  <div align="center">关键点检测篇</div>
