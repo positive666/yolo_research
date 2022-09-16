@@ -15,64 +15,168 @@
 
 
 
-##  <div align="left">🌟 基于yolov5&&yolov7(近期回归开源更新，项目重整优化！！！waiting)</div>
+##  <div align="left">🚀 yolov5_reserach  High-level项目(近期回项目重整优化！！！waiting)</div>
 
 
 更新升级中.....
 
 ### <div align="left">⭐新闻板块【实时更新/计划】</div>
 
-	
+
 	- 分类、检测、分割、关键点检测基本整合完毕，工程结构精简化中，关键点检测训练正常已经验证，分割待调试，火速迭代中
-	- 分割代码结合V5和V7的代码进行了合并DEBUG调试，训练部分待验证，另外注意力层训练过程中，没法收敛或者NAN的情况，排除代码问题，需要在超参数YAML里，先对学习衰减率从0.1变成0.2 ，比如GAM，因为用了注意力头训练周期加到400EPOCH左右就可以训练。
-	
+	- 分割代码结合V5和V7的代码进行了合并DEBUG调试，训练部分待验证，另外注意力层训练过程中，没法收敛或者NAN的情况，排除代码问题，需要在超参数YAML里，先对学习衰减率从改为0.2 ，比如GAM的注意力头部问题，训练周期加到400epoch+ 就可以。
 	- 去年的decoupled结构虽然能提点，不过FLOPS增加的太多，目前用V5作者分支的解耦头替换，效果待验证。
-	
 	- 融合了代码做了部分的优化，这里看了下V7的代码优化较差，后续会集成精简版本的分类、分割、检测、POSE检测的结构，目前已经完成了一部分工作，更新频繁有问题欢迎反馈和提供实验结果。
 <p>
 
 # Feature 🚀 
 
 
-     以最新的V5代码风格简化，集成High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，目前在快速迭代中
-     实时的v5代码更新改动&&v7的适配
-     早期集成的attention、self-attention维护和调试
-     额外的网络结构和Tricks补充
+     - 基于torch以最新的yoloV5工程风格精简融合High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，删除额外的三方库依赖，快速迭代
+     
+     - 实时的v5代码更新改动&&v7的适配
+     
+     - 早期集成的attention、self-attention维护和调试
+     
+     - 额外的网络结构和Tricks补充
 
-
-
-news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolov7 預訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去) 提取码：v7v7
-
-
-
-
-简单来说,V7是V5的一次扩充版本,详情可以看：
 [CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
-***
+
+
 (保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配.... 这些今年依旧是我的重点核心 欢迎提供实验数据和結果~)
 
-对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；
-而且transfromer是很难发生过拟合或者说不存在，其实实际操作中，这些改动没有质变，最实在的还是你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性。
-***
-基于Yolov5的官方项目：[参考官方](https://github.com/ultralytics/yolov5) 
-声明：这一年里有很多朋友用修改的idea方式以及注意力和设计结构去做Paper，不用咨询我意见：一切free！有成效自己论文开源随便，与我无关，只是希望各位能把实验数据反馈给我，因为平时工作业务比较忙，实验的时间不够。也是借此目的来和大家一起学习交流。
-***
+对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；而且transfromer是很难发生过拟合或者说不存在，动态特性确实更具泛化性，常规情况中优先考虑你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性，其次扩充构建相应的辅助分支加入特征属性描述。
+
 任何技术都要讲究：时序性，所以要不断学习不断业务工程，保持自己的状态！
+声明：这一年里有很多朋友用修改的idea方式以及注意力和设计结构去做Paper，不用咨询我意见：一切free！有成效自己论文开源随便，与我无关，只是希望各位能把实验数据反馈给我，因为平时工作业务比较忙，实验的时间不够。也是借此目的来和大家一起学习交流。
 
-工程部署：该仓库只属于研究探索，但是工程部署讲究简单高效、故可以参考我的Deepstream SDK改的项目，集合了通用检测、人脸识别、OCR三个项目，高性能的部署AI框架开发逻辑，这个项目是我2021年整理并开源的，代码还未规范，但程序是没问题的。
-##  工程部署 Why Deepstream?  
- DS_5.1&&Tensorrt7+ ：https://github.com/positive666/Deepstream_Project
+<details open>
+<summary>Install</summary>
+Clone repo and install [requirements.txt](https://github.com/positive666/yolov5_research/requirements.txt) in a
+[**Python>=3.7.0**](https://www.python.org/) environment, including
+[**PyTorch>=1.7**](https://pytorch.org/get-started/locally/).
 
-     1.英伟达提供的Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
-     2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，推荐Yolov5nano或者nanodetplus,(工程上主流是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代。还有就是如何使用SGD炼丹的经验了)
-     还有就是deepstream的普及，网上很多剪枝版本我也看了值得学习，但是工程不只在于学习，而在于成本和结果。
-     3.x86和Jeston都可以部署，既然有一站式解决方案，我觉得工程和研究应用是完全不同的操作思路，精简高效达到目的.deepstream全做了并完成降维打击 ，当然也需要一定的综合开发能力。
-***
-## <div align="center">往期更新</div>
+```bash
+git clone https://github.com/positive666/yolov5_research  # clone
+cd yolov5
+pip install -r requirements.txt  # install
+```
+
+## <div align="center">目标检测篇</div>
+
+
+
+<details>
+<summary>Inference with detect.py</summary>
+
+
+```bash
+python detect.py --source 0  # webcam     --weights <your model weight>
+                          img.jpg  # image
+                          vid.mp4  # video
+                          path/  # directory
+                          'path/*.jpg'  # glob
+                          'https://youtu.be/Zgi9g1ksQHc'  # YouTube
+                          'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP stream
+```
+
+yolov7 官方的訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUpWWBBczOcgA?pwd=v7v7(由于我删除了P6模型里的Reorg操作和Focus没本质区别，所以删掉需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去，还有一种方式是遍历Reorg的权重把它替换掉) 提取码：v7v7
+###  Train
+
+see train.py args ,command as :
+
+```bash
+python train.py --data <your data yaml>  --cfg  <your model yaml> --weights <weights path>  --batch-size 128    --hyp   <hyps yaml>  --batch-size <numbers>  
+```
+<details open>
+<summary>Notes</summary>
+
+- "--swin_float"  for "SwinTransformer_Layer" layers,because of " @" not support  fp16,so you can use offical yolov7 “ Swinv2Block”
+- "--aux_ota_loss" for aux- head only . Such "models/v7_cfg/training/yolov7x6x.yaml, (P6-model) ,you can create aux -head models.		
+- "ota_loss"  in hyps filse ,ota_loss default=0 
+</details>   
+
+<details>
+<summary>Training commnd example </summary>
+
+-  run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
+
+```bash 
+python train.py  --data data/coco128.yaml  --cfg models/yolov5s_decoupled.yaml   
+```
+```bash 
+python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets) --hyp data/hyps/hyp.scratch-v7.custom.yaml	
+```
+-  run yolov7-aux model train ,your model must P6-model !
+```bash 
+python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
+```
+- After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
+Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
+
+</details>
+
+<details open>
+<summary>re-parameterizetrained yolov7 model  </summary>
+
+```bash 
+   python reparameterization.py  --weights <yolov7.pt,yolov7e6e.pt.....>  --name <model name > --save_file   models/v7_cfg/deploy  --cfg <model.yaml>
+```
+</details>
+
+
+## <div align="center">关键点检测篇</div>
+
+<details>
+<summary>数据集构建</summary>
+
+```
+yolov5_research
+│   pose  
+│   └─────(key point detect code )
+│   ...   
+│
+coco_kpts(your data yaml path name )
+│   images
+│   annotations/**.json
+|   labels
+│   └─────train2017
+│       │       └───
+|       |       └───
+|       |       '
+|       |       .
+│       └─val2017
+|               └───
+|               └───
+|               .
+|               .
+|    train2017.txt
+|    val2017.txt
+
+```
+</details>
+
+###  Inference
+refernce v7 weights.
+[yolov7-w6-pose.pt](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-w6-pose.pt)
+
+``` bash 
+python pose/detect.py --weights pose/pose_weights/yolov7-w6-pose.pt  --source  data/images/bus.jpg   --kpt-label 
+```
+###  Train
+
+[yolov7-w6-person.pt](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-w6-person.pt)
+
+``` shell
+    python pose/train.py --data  data/coco_kpts.yaml  --cfg  pose/cfg/yolov7-w6-pose.yaml weights yolov7-w6-person.pt --img 960  --kpt-label --hyp data/hyps/hyp.pose.yaml
+
+```
+
+## <div align="left">历史更新</div>
 
 <details>
 <summary>更新记录</summary>
-
+- 2020/9/15  High-level 集成待验证，目前姿态训练和检测已经调试完成。
 - 2022/7/21  除关键点部分的V7代码以及V5代码风格优化合并更新，改善了重参数脚本的功能，详情看	reparameterization.py
 
 - 2022/7/13  同步更新加入了yolov7的P6模型訓練部分代碼，p6是需要aux的所以需要添加Loss部分計算，代碼和CSDN持續更新中,由于我删除了P6模型里的Reorg操作其实就说FOcus，所以需要重新训练，如果你想使用V7原始权重，你只需要在YAML里改回去
@@ -110,49 +214,34 @@ news:based on yolov5 && yolov7 (https://github.com/WongKinYiu/yolov7.git)   yolo
 
 </details>
 
+## <div align="center">高性能视频推理部署</div>
+<details>
+<summary>工程部署 Why Deepstream?</summary>
 
+工程部署：该仓库只属于研究探索，但是工程部署讲究简单高效、故可以参考我的Deepstream SDK改的项目，集合了通用检测、人脸识别、OCR三个项目，高性能的部署AI框架开发逻辑，这个项目是我2021年整理并开源的，代码还未规范，但程序是没问题的。
+ DS_5.1&&Tensorrt7+ ：https://github.com/positive666/Deepstream_Project
 
+     1.英伟达提供的Deepstream &&Tensorrt，应用于流媒体处理，因为做过业务的都知道，推理性能不等于程序运行性能，核心除了模型的本身剪枝量化之外，涉及到了对数据输入的处理，这里的核心问题是如何提高GPU的利用率，那么最直接的就是GPU编解码.
+     2.目前嵌入式部署可能大多采用剪枝通道压缩模型的流程，在结合一些框架去进行引擎推理，推荐Yolov5nano或者nanodetplus,(工程上主流是通道裁剪，替换如C3的BOLOCK，你可以在仔细比对YOLOV5的迭代。还有就是如何使用SGD炼丹的经验了)
+     还有就是deepstream的普及，网上很多剪枝版本我也看了值得学习，但是工程不只在于学习，而在于成本和结果。
+     3.x86和Jeston都可以部署，既有一站式解决方案，我觉得工程和研究应用是完全不同的操作思路，精简高效达到目的.deepstream全做了并完成降维打击 ，当然也需要一定的综合开发能力。
 
 </details>
 
-<details>
-<summary>Training</summary>
-
-- 1. run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
-	  
-      python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets)   --hyp data/hyps/hyp.scratch-v7.custom.yaml
-	
-	if your run Custom swinV2 ,add --swin_float
-	
-- 2. run yolov7-aux model train ,your model must P6-model !
-	  
-      python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
-	
-- 3. After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
-- 4. Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
-- 5. see reparameterization.py	
-
-
-
 ## C++ sdk的完整Deepstream5.1部署（内置C++嵌入的Kafka服务） 
-  目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0SDK有变动)
+  目前是5.1版本，近期更新6.0(主要区别在于Tensorrt7和Tensorrt8的源码区别导致的，部分6.0 SDK有变动)
   [Deepsteam YOLOV5 V5.0]https://github.com/positive666/Deepstream_Project/tree/main/Deepstream_Yolo 
 
-***
-
-   不间断保持更新和汇总实验：算子引入，LOSS改进，针对网络结构进行不同的任务的最优结构汇总，样本匹配实验，业务拓展等等
-   有针对于自己数据集或者公开数据集的效果请联系，目前有很多实验没做，平时工作繁忙，保证定期更新，也希望大家能一起探索最优结构和实验效果。
-
-***
 
 
+## Acknowledgements
 
+<details><summary> <b>Expand</b> </summary>
 
+* [https://github.com/WongKinYiu/yolov7](https://github.com/WongKinYiu/yolov7)
+* [https://github.com/ultralytics/yolov5](https://github.com/ultralytics/yolov5)
+* [https://github.com/TexasInstruments/edgeai-yolov5/tree/yolo-pose](https://github.com/TexasInstruments/edgeai-yolov5/tree/yolo-pose)
+* [https://github.com/ChristophReich1996/Swin-Transformer-V2](https://github.com/ChristophReich1996/Swin-Transformer-V2)
+* https://github.com/positive666/Deepstream_Project
 
-#Swintransformer2的修改 
-参考：https://github.com/ChristophReich1996/Swin-Transformer-V2/blob/main/swin_transformer_v2/model_parts.py
-
-# 业务拓展（可做人脸、文字等特定目标检测、分割）
-
-人脸工作可参考： yolov5_face repo: [https://github.com/deepcam-cn/yolov5-face.git]
-ocr 后面我会更新下自己的思路，但是目前个人使用比较好的还是DBnet.看后面时间更新项目
+</details>
