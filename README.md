@@ -51,7 +51,7 @@ Clone repo and install [requirements.txt](https://github.com/positive666/yolov5_
 
 ```bash
 git clone https://github.com/positive666/yolov5_research  # clone
-cd yolov5
+cd yolov5_research
 pip install -r requirements.txt  # install
 ```
 </details>
@@ -284,7 +284,7 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 
 </details>
 
-## <div align="center">高性能视频推理部署</div>
+##<div align="center">高性能视频推理部署—待更新升级</div>
 <details>
 <summary>工程部署 Why Deepstream?</summary>
 
