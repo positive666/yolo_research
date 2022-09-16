@@ -242,7 +242,7 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 ```
 </details>
 
-##<div align="left">历史更新</div>
+## <div align="center">历史更新</div>
 
 <details>
 <summary>更新记录</summary>
@@ -280,11 +280,11 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 - 2021.6.25  添加BIFPN结构包含P5/P6层，增大开销但是对于一些任务是能够提点的
 - 2021.6     Botnet transformer 算子块引入于Backbone底层
 - 2021.2.10  全网首发的YOLOV5魔改，ASFF检测头封装加入、注意力机制CBAM、CooRD、等注意力算子引入，并介绍了通用修改方式
-***
+
 
 </details>
 
-##<div align="center">高性能视频推理部署—待更新升级</div>
+## <div align="center">高性能视频推理部署—待更新升级</div>
 <details>
 <summary>工程部署 Why Deepstream?</summary>
 
