@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 sys.path.append(str(Path(__file__).parent.parent.parent))  # add utils/ to path
 from pose.datasets import LoadImagesAndLabels, img2label_paths
-from pose.general import colorstr, xywh2xyxy, check_dataset
+from utils.general import colorstr, xywh2xyxy, check_dataset
 
 try:
     import wandb
