@@ -116,7 +116,7 @@ jobs:
           python hubconf.py --model $m  # hub
           # python models/tf.py --weights $m.pt  # build TF model
           python models/yolo.py --cfg $m.yaml  # build PyTorch model
-          python export.py --weights $m.pt --img 64 --include torchscript  # export
+         # python export.py --weights $m.pt --img 64 --include torchscript  # export
           python - <<EOF
           import torch
           im = torch.zeros([1, 3, 64, 64])
@@ -137,7 +137,7 @@ jobs:
             for w in $m $b; do  # weights
               python segment/val.py --imgsz 64 --batch 32 --weights $w.pt --device $d  # val
               python segment/predict.py --imgsz 64 --weights $w.pt --device $d  # predict
-              python export.py --weights $w.pt --img 64 --include torchscript --device $d  # export
+              #python export.py --weights $w.pt --img 64 --include torchscript --device $d  # export
             done
           done
       - name: Test classification
@@ -149,7 +149,7 @@ jobs:
           python classify/val.py --imgsz 32 --weights $b --data ../datasets/mnist2560  # val
           python classify/predict.py --imgsz 32 --weights $b --source ../datasets/mnist2560/test/7/60.png  # predict
           python classify/predict.py --imgsz 32 --weights $m --source data/images/bus.jpg  # predict
-          python export.py --weights $b --img 64 --imgsz 224 --include torchscript  # export
+         # python export.py --weights $b --img 64 --imgsz 224 --include torchscript  # export
           python - <<EOF
           import torch
           for path in '$m', '$b':

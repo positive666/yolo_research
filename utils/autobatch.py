@@ -64,6 +64,6 @@ def autobatch(model, imgsz=640, fraction=0.8, batch_size=16):
         b = batch_size
         LOGGER.warning(f'{prefix}WARNING: ⚠️ CUDA anomaly detected, recommend restart environment and retry command.')
 
-    fraction = np.polyval(p, b) / t  # actual fraction predicted
+    fraction = (np.polyval(p, b) + r + a) / t  # actual fraction predicted
     LOGGER.info(f'{prefix}Using batch-size {b} for {d} {t * fraction:.2f}G/{t:.2f}G ({fraction * 100:.0f}%) ✅')
     return b
