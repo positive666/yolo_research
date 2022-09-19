@@ -399,14 +399,14 @@ class DetectMultiBackend(nn.Module):
     def model_type(p='path/to/model.pt'):
         # Return model type from model path, i.e. path='path/to/model.onnx' -> type=onnx
         from export import export_formats
-        suffixes = list(export_formats().Suffix) + ['.xml']  # export suffixes
-        check_suffix(p, suffixes)  # checks
+        sf = list(export_formats().Suffix) + ['.xml']  # export suffixes
+        check_suffix(p, sf)  # checks
         p = Path(p).name  # eliminate trailing separators
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, xml2 = (s in p for s in suffixes)
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, xml2 = (s in p for s in sf)
         xml |= xml2  # *_openvino_model or *.xml
         tflite &= not edgetpu  # *.tflite
-        return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs
-    
+        return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle
+        
     @staticmethod
     def _load_metadata(f='path/to/meta.yaml'):
         # Load metadata from meta.yaml if it exists
