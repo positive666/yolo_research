@@ -1039,12 +1039,11 @@ class AutoShape(nn.Module):
         self.dmb = isinstance(model, DetectMultiBackend)  # DetectMultiBackend() instance
         self.pt = not self.dmb or model.pt  # PyTorch model
         self.model = model.eval()
-       # m.export = True  # do not output loss values
-        
         if self.pt:
             m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
             m.inplace = False  # Detect.inplace=False for safe multithread inference
-
+            m.export = True  # do not output loss values
+            
     def _apply(self, fn):
             # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
             self = super()._apply(fn)
@@ -1104,31 +1103,31 @@ class AutoShape(nn.Module):
 
         with amp.autocast(autocast):
             # Inference
-            y = self.model(x, augment, profile)  # forward
-            t.append(time_sync())
-
+            with dt[1]:
+                y = self.model(x, augment=augment)  # forward
+            with dt[2]:
             # Post-process
-            y = non_max_suppression(y if self.dmb else y[0],
-                                    self.conf,
-                                    self.iou,
-                                    self.classes,
-                                    self.agnostic,
-                                    self.multi_label,
-                                    max_det=self.max_det)  # NMS
-            for i in range(n):
-                scale_coords(shape1, y[i][:, :4], shape0[i])
+                y = non_max_suppression(y if self.dmb else y[0],
+                                        self.conf,
+                                        self.iou,
+                                        self.classes,
+                                        self.agnostic,
+                                        self.multi_label,
+                                        max_det=self.max_det)  # NMS
+                for i in range(n):
+                    scale_coords(shape1, y[i][:, :4], shape0[i])
 
-            t.append(time_sync())
-            return Detections(ims, y, files, t, self.names, x.shape)
+           
+            return Detections(ims, y, files, dt, self.names, x.shape)
 
 
 class Detections:
     # detections class for YOLOv5 inference results
-    def __init__(self, imgs, pred, files, times=(0, 0, 0, 0), names=None, shape=None):
+    def __init__(self, ims, pred, files, times=(0, 0, 0, 0), names=None, shape=None):
         super().__init__()
         d = pred[0].device  # device
-        gn = [torch.tensor([*[im.shape[i] for i in [1, 0, 1, 0]], 1., 1.], device=d) for im in imgs]  # normalizations
-        self.imgs = imgs  # list of images as numpy arrays
+        gn = [torch.tensor([*(im.shape[i] for i in [1, 0, 1, 0]), 1, 1], device=d) for im in ims]  # normalizations 
+        self.ims = ims  # list of images as numpy arrays
         self.pred = pred  # list of tensors pred[0] = (xyxy, conf, cls)
         self.names = names  # class names
         self.files = files  # image filenames
@@ -1138,8 +1137,8 @@ class Detections:
         self.xyxyn = [x / g for x, g in zip(self.xyxy, gn)]  # xyxy normalized
         self.xywhn = [x / g for x, g in zip(self.xywh, gn)]  # xywh normalized
         self.n = len(self.pred)  # number of images (batch size)
-        self.t = tuple((times[i + 1] - times[i]) * 1000 / self.n for i in range(3))  # timestamps (ms)
-        self.s = shape  # inference BCHW shape
+        self.t = tuple(x.t / self.n * 1E3 for x in times)  # timestamps (ms)
+        self.s = tuple(shape)  # inference BCHW shape
 
     def _run(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path('')):
         s, crops = '', []
@@ -1219,13 +1218,15 @@ class Detections:
         #    for k in ['ims', 'pred', 'xyxy', 'xyxyn', 'xywh', 'xywhn']:
         #        setattr(d, k, getattr(d, k)[0])  # pop out of list
         return x
-
+    def print(self):
+        LOGGER.info(self.__str__())
+        
     def __len__(self):
         return self.n # override len(results)
         
     def __str__(self):
-        self.print()  # override print(results)
-        return ''
+        return self._run(pprint=True)  # print results
+        
     def __repr__(self):
         return f'YOLOv5 {self.__class__} instance\n' + self.__str__()
         
