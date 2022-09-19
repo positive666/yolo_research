@@ -957,7 +957,7 @@ def non_max_suppression(prediction,
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded
 
-    return 
+    return output
 
 def non_max_suppression_keypoint(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
                         labels=(), kpt_label=False, nc=None, nkpt=None):
