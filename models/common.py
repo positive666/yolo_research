@@ -408,10 +408,12 @@ class DetectMultiBackend(nn.Module):
         return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle
         
     @staticmethod
-    def _load_metadata(f='path/to/meta.yaml'):
+    def _load_metadata(f=Path('path/to/meta.yaml')):
         # Load metadata from meta.yaml if it exists
-        d = yaml_load(f)
-        return d['stride'], d['names']  # assign stride, names
+        if f.exists():
+            d = yaml_load(f)
+            return d['stride'], d['names']  # assign stride, names
+        return None, None
         
 class Conv(nn.Module):
     # Standard convolution
@@ -1057,7 +1059,7 @@ class AutoShape(nn.Module):
             return self
 
     @smart_inference_mode()
-    def forward(self, imgs, size=640, augment=False, profile=False):
+    def forward(self, ims, size=640, augment=False, profile=False):
         # Inference from various sources. For height=640, width=1280, RGB images example inputs are:
         #   filename:   imgs = 'data/images/zidane.jpg'
         #   URI:             = 'https://github.com/ultralytics/yolov5/releases/download/v1.0/zidane.jpg'
@@ -1067,37 +1069,40 @@ class AutoShape(nn.Module):
         #   torch:           = torch.zeros(16,3,320,640)  # BCHW (scaled to size=640, 0-1 values)
         #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
 
-        t = [time_sync()]
-        p = next(self.model.parameters()) if self.pt else torch.zeros(1, device=self.model.device)  # for device and type
-        autocast = self.amp and (p.device.type != 'cpu')  # Automatic Mixed Precision (AMP) inference
-        if isinstance(imgs, torch.Tensor):  # torch
-            with amp.autocast(autocast):
-                return self.model(imgs.to(p.device).type_as(p), augment, profile)  # inference
+        dt = (Profile(), Profile(), Profile())
+        with dt[0]:
+            if isinstance(size, int):  # expand
+                size = (size, size)
+            p = next(self.model.parameters()) if self.pt else torch.empty(1, device=self.model.device)  # param
+            autocast = self.amp and (p.device.type != 'cpu')  # Automatic Mixed Precision (AMP) inference
+            if isinstance(ims, torch.Tensor):  # torch
+                with amp.autocast(autocast):
+                    return self.model(ims.to(p.device).type_as(p), augment=augment)  # inference
 
-        # Pre-process
-        n, imgs = (len(imgs), imgs) if isinstance(imgs, list) else (1, [imgs])  # number of images, list of images
-        shape0, shape1, files = [], [], []  # image and inference shapes, filenames
-        for i, im in enumerate(imgs):
-            f = f'image{i}'  # filename
-            if isinstance(im, (str, Path)):  # filename or uri
-                im, f = Image.open(requests.get(im, stream=True).raw if str(im).startswith('http') else im), im
-                im = np.asarray(exif_transpose(im))
-            elif isinstance(im, Image.Image):  # PIL Image
-                im, f = np.asarray(exif_transpose(im)), getattr(im, 'filename', f) or f
-            files.append(Path(f).with_suffix('.jpg').name)
-            if im.shape[0] < 5:  # image in CHW
-                im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
-            im = im[..., :3] if im.ndim == 3 else np.tile(im[..., None], 3)  # enforce 3ch input
-            s = im.shape[:2]  # HWC
-            shape0.append(s)  # image shape
-            g = (size / max(s))  # gain
-            shape1.append([y * g for y in s])
-            imgs[i] = im if im.data.contiguous else np.ascontiguousarray(im)  # update
-        shape1 = [make_divisible(x, self.stride) for x in np.stack(shape1, 0).max(0)]  # inference shape
-        x = [letterbox(im, shape1, auto=False)[0] for im in imgs]  # pad
-        x = np.ascontiguousarray(np.array(x).transpose((0, 3, 1, 2)))  # stack and BHWC to BCHW
-        x = torch.from_numpy(x).to(p.device).type_as(p) / 255.  # uint8 to fp16/32
-        t.append(time_sync())
+            # Pre-process
+            n, ims = (len(ims), list(ims)) if isinstance(ims, (list, tuple)) else (1, [ims])  # number, list of images
+            shape0, shape1, files = [], [], []  # image and inference shapes, filenames
+            for i, im in enumerate(ims):
+                f = f'image{i}'  # filename
+                if isinstance(im, (str, Path)):  # filename or uri
+                    im, f = Image.open(requests.get(im, stream=True).raw if str(im).startswith('http') else im), im
+                    im = np.asarray(exif_transpose(im))
+                elif isinstance(im, Image.Image):  # PIL Image
+                    im, f = np.asarray(exif_transpose(im)), getattr(im, 'filename', f) or f
+                files.append(Path(f).with_suffix('.jpg').name)
+                if im.shape[0] < 5:  # image in CHW
+                    im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
+                im = im[..., :3] if im.ndim == 3 else cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)  # enforce 3ch input
+                s = im.shape[:2]  # HWC
+                shape0.append(s)  # image shape
+                g = max(size) / max(s)  # gain
+                shape1.append([y * g for y in s])
+                ims[i] = im if im.data.contiguous else np.ascontiguousarray(im)  # update
+            shape1 = [make_divisible(x, self.stride) for x in np.array(shape1).max(0)] if self.pt else size  # inf shape
+            x = [letterbox(im, shape1, auto=False)[0] for im in ims]  # pad
+            x = np.ascontiguousarray(np.array(x).transpose((0, 3, 1, 2)))  # stack and BHWC to BCHW
+            x = torch.from_numpy(x).to(p.device).type_as(p) / 255  # uint8 to fp16/32
+            
 
         with amp.autocast(autocast):
             # Inference
@@ -1116,7 +1121,7 @@ class AutoShape(nn.Module):
                 scale_coords(shape1, y[i][:, :4], shape0[i])
 
             t.append(time_sync())
-            return Detections(imgs, y, files, t, self.names, x.shape)
+            return Detections(ims, y, files, t, self.names, x.shape)
 
 
 class Detections:
@@ -1138,14 +1143,15 @@ class Detections:
         self.t = tuple((times[i + 1] - times[i]) * 1000 / self.n for i in range(3))  # timestamps (ms)
         self.s = shape  # inference BCHW shape
 
-    def display(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path('')):
-        crops = []
-        for i, (im, pred) in enumerate(zip(self.imgs, self.pred)):
-            s = f'image {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '  # string
+    def _run(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path('')):
+        s, crops = '', []
+        for i, (im, pred) in enumerate(zip(self.ims, self.pred)):
+            s += f'\nimage {i + 1}/{len(self.pred)}: {im.shape[0]}x{im.shape[1]} '  # string
             if pred.shape[0]:
                 for c in pred[:, -1].unique():
                     n = (pred[:, -1] == c).sum()  # detections per class
                     s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                s = s.rstrip(', ')
                 if show or save or render or crop:
                     annotator = Annotator(im, example=str(self.names))
                     for *box, conf, cls in reversed(pred):  # xyxy, confidence, class
@@ -1165,8 +1171,6 @@ class Detections:
                 s += '(no detections)'
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
-            if pprint:
-                LOGGER.info(s.rstrip(', '))
             if show:
                 im.show(self.files[i])  # show
             if save:
@@ -1175,31 +1179,29 @@ class Detections:
                 if i == self.n - 1:
                     LOGGER.info(f"Saved {self.n} image{'s' * (self.n > 1)} to {colorstr('bold', save_dir)}")
             if render:
-                self.imgs[i] = np.asarray(im)
+                self.ims[i] = np.asarray(im)
+        if pprint:
+            s = s.lstrip('\n')
+            return f'{s}\nSpeed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {self.s}' % self.t
         if crop:
             if save:
                 LOGGER.info(f'Saved results to {save_dir}\n')
             return crops
 
-    def print(self):
-        self.display(pprint=True)  # print results
-        LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {tuple(self.s)}' %
-                    self.t)
-
     def show(self, labels=True):
-        self.display(show=True, labels=labels)  # show results
+        self._run(show=True, labels=labels)  # show results
 
     def save(self, labels=True, save_dir='runs/detect/exp'):
         save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True)  # increment save_dir
-        self.display(save=True, labels=labels, save_dir=save_dir)  # save results
+        self._run(save=True, labels=labels, save_dir=save_dir)  # save results
 
     def crop(self, save=True, save_dir='runs/detect/exp'):
         save_dir = increment_path(save_dir, exist_ok=save_dir != 'runs/detect/exp', mkdir=True) if save else None
-        return self.display(crop=True, save=save, save_dir=save_dir)  # crop results
+        return self._run(crop=True, save=save, save_dir=save_dir)  # crop results
 
     def render(self, labels=True):
-        self.display(render=True, labels=labels)  # render results
-        return self.imgs
+        self._run(render=True, labels=labels)  # render results
+        return self.ims
 
     def pandas(self):
         # return detections as pandas DataFrames, i.e. print(results.pandas().xyxy[0])
@@ -1214,9 +1216,9 @@ class Detections:
     def tolist(self):
         # return a list of Detections objects, i.e. 'for result in results.tolist():'
         r = range(self.n)  # iterable
-        x = [Detections([self.imgs[i]], [self.pred[i]], [self.files[i]], self.times, self.names, self.s) for i in r]
+        x = [Detections([self.ims[i]], [self.pred[i]], [self.files[i]], self.times, self.names, self.s) for i in r]
         # for d in x:
-        #    for k in ['imgs', 'pred', 'xyxy', 'xyxyn', 'xywh', 'xywhn']:
+        #    for k in ['ims', 'pred', 'xyxy', 'xyxyn', 'xywh', 'xywhn']:
         #        setattr(d, k, getattr(d, k)[0])  # pop out of list
         return x
 
@@ -1226,7 +1228,9 @@ class Detections:
     def __str__(self):
         self.print()  # override print(results)
         return ''
-
+    def __repr__(self):
+        return f'YOLOv5 {self.__class__} instance\n' + self.__str__()
+        
 class Classify(nn.Module):
     # Classification head, i.e. x(b,c1,20,20) to x(b,c2)
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1):  # ch_in, ch_out, kernel, stride, padding, groups
