@@ -1,43 +1,5 @@
 name: YOLOV5_RESEARCH_PLUS CI CPU testing
 
-Skip to content
-Search or jump to…
-Pulls
-Issues
-Marketplace
-Explore
- 
-@positive666 
-ultralytics
-/
-yolov5
-Public
-Code
-Issues
-304
-Pull requests
-27
-Discussions
-Actions
-Projects
-1
-Wiki
-More
-yolov5/.github/workflows/ci-testing.yml
-@glenn-jocher
-glenn-jocher TensorFlow SegmentationModel support (#9472)
-…
-Latest commit fda8aa5 17 hours ago
- History
- 15 contributors
-@glenn-jocher@Borda@dependabot@pre-commit-ci@AyushExel@SkalskiP@zldrobit@invalid-email-address@SamSamhuns@pizzaz93@developer0hye@chocosaj
-161 lines (157 sloc)  6.9 KB
-
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
-# YOLOv5 Continuous Integration (CI) GitHub Actions tests
-
-name: YOLOv5 CI
-
 on:
   push:
     branches: [ master ]
