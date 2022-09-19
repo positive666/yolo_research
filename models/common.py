@@ -162,12 +162,10 @@ class DetectMultiBackend(nn.Module):
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
         pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle  = self.model_type(w)
-        stride, names = 32, [f'class{i}' for i in range(1000)]  # assign defaults
         w = attempt_download(w)  # download if not local
-        fp16 &= (pt or jit or onnx or engine) and device.type != 'cpu'  # FP16
-        if data:  # data.yaml path (optional)
-            with open(data, errors='ignore') as f:
-                names = yaml.safe_load(f)['names']  # class names
+        fp16 &= pt or jit or onnx or engine  # FP16
+        stride = 32  # default stride
+        cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
                 
         if pt:  # PyTorch
             model = attempt_load(weights if isinstance(weights, list) else w, device=device, inplace=True, fuse=fuse)
