@@ -1,12 +1,6 @@
 
 
-
 name: YOLOV5_RESEARCH_PLUS CI CPU testing
-
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
-# YOLOv5 Continuous Integration (CI) GitHub Actions tests
-
-name: YOLOv5 CI
 
 on:
   push:
