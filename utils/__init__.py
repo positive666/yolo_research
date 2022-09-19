@@ -1,11 +1,16 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# From  YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 utils/initialization
 """
 
 import contextlib
+import platform
 import threading
 
+
+def emojis(str=''):
+    # Return platform-dependent emoji-safe version of string
+    return str.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else str
 
 class TryExcept(contextlib.ContextDecorator):
     # YOLOv5 TryExcept class. Usage: @TryExcept() decorator or 'with TryExcept():' context manager
@@ -38,7 +43,7 @@ def notebook_init(verbose=True):
     import os
     import shutil
 
-    from utils.general import check_font, check_requirements, emojis, is_colab
+    from utils.general import check_font, check_requirements, is_colab
     from utils.torch_utils import select_device  # imports
 
     check_requirements(('psutil', 'IPython'))

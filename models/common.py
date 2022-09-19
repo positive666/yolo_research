@@ -212,7 +212,7 @@ class DetectMultiBackend(nn.Module):
             if batch_dim.is_static:
                 batch_size = batch_dim.get_length()
             executable_network = ie.compile_model(network, device_name="CPU")  # device_name="MYRIAD" for Intel NCS2
-            output_layer = next(iter(executable_network.outputs))
+            #output_layer = next(iter(executable_network.outputs))
             meta = Path(w).with_suffix('.yaml')
             if meta.exists():
                 stride, names = self._load_metadata(meta)  # load metadata
@@ -311,7 +311,7 @@ class DetectMultiBackend(nn.Module):
             y = self.session.run(self.output_names, {self.session.get_inputs()[0].name: im})
         elif self.xml:  # OpenVINO
             im = im.cpu().numpy()  # FP32
-            y = self.executable_network([im])[self.output_layer]
+            y = list(self.executable_network([im]).values())
         elif self.engine:  # TensorRT
             if self.dynamic and im.shape != self.bindings['images'].shape:
                 i_in, i_out = (self.model.get_binding_index(x) for x in ('images', 'output'))

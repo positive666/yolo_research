@@ -22,6 +22,7 @@ Usage - formats:
                                           yolov5s-seg.pb                 # TensorFlow GraphDef
                                           yolov5s-seg.tflite             # TensorFlow Lite
                                           yolov5s-seg_edgetpu.tflite     # TensorFlow Edge TPU
+                                          yolov5s-seg_paddle_model       # PaddlePaddle
 """
 
 import argparse
@@ -31,7 +32,6 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.backends.cudnn as cudnn
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -44,39 +44,40 @@ from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_coords, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
-from utils.segment.general import process_mask, scale_masks
-from utils.segment.plots import plot_masks
+from utils.segment.general import process_mask
 from utils.torch_utils import select_device, smart_inference_mode
 
 
 @smart_inference_mode()
 def run(
-        weights=ROOT / 'yolov5s-seg.pt',  # model.pt path(s)
-        source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam
-        data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
-        imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.25,  # confidence threshold
-        iou_thres=0.45,  # NMS IOU threshold
-        max_det=1000,  # maximum detections per image
-        device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-        view_img=False,  # show results
-        save_txt=False,  # save results to *.txt
-        save_conf=False,  # save confidences in --save-txt labels
-        save_crop=False,  # save cropped prediction boxes
-        nosave=False,  # do not save images/videos
-        classes=None,  # filter by class: --class 0, or --class 0 2 3
-        agnostic_nms=False,  # class-agnostic NMS
-        augment=False,  # augmented inference
-        visualize=False,  # visualize features
-        update=False,  # update all models
-        project=ROOT / 'runs/predict-seg',  # save results to project/name
-        name='exp',  # save results to project/name
-        exist_ok=False,  # existing project/name ok, do not increment
-        line_thickness=3,  # bounding box thickness (pixels)
-        hide_labels=False,  # hide labels
-        hide_conf=False,  # hide confidences
-        half=False,  # use FP16 half-precision inference
-        dnn=False,  # use OpenCV DNN for ONNX inference
+    weights=ROOT / 'yolov5s-seg.pt',  # model.pt path(s)
+    source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam
+    data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
+    imgsz=(640, 640),  # inference size (height, width)
+    conf_thres=0.25,  # confidence threshold
+    iou_thres=0.45,  # NMS IOU threshold
+    max_det=1000,  # maximum detections per image
+    device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    view_img=False,  # show results
+    save_txt=False,  # save results to *.txt
+    save_conf=False,  # save confidences in --save-txt labels
+    save_crop=False,  # save cropped prediction boxes
+    nosave=False,  # do not save images/videos
+    classes=None,  # filter by class: --class 0, or --class 0 2 3
+    agnostic_nms=False,  # class-agnostic NMS
+    augment=False,  # augmented inference
+    visualize=False,  # visualize features
+    update=False,  # update all models
+    project=ROOT / 'runs/predict-seg',  # save results to project/name
+    name='exp',  # save results to project/name
+    exist_ok=False,  # existing project/name ok, do not increment
+    line_thickness=3,  # bounding box thickness (pixels)
+    hide_labels=False,  # hide labels
+    hide_conf=False,  # hide confidences
+    half=False,  # use FP16 half-precision inference
+    dnn=False,  # use OpenCV DNN for ONNX inference
+    vid_stride=1,  # video frame-rate stride
+    retina_masks=False,
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -99,11 +100,10 @@ def run(
     # Dataloader
     if webcam:
         view_img = check_imshow()
-        cudnn.benchmark = True  # set True to speed up constant image size inference
-        dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
+        dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
         bs = len(dataset)  # batch_size
     else:
-        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
+        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
 
@@ -121,8 +121,7 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred, out = model(im, augment=augment, visualize=visualize)
-            proto = out[1]
+            pred, proto = model(im, augment=augment, visualize=visualize)[:2]
 
         # NMS
         with dt[2]:
@@ -158,11 +157,10 @@ def run(
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Mask plotting ----------------------------------------------------------------------------------------
-                mcolors = [colors(int(cls), True) for cls in det[:, 5]]
-                im_masks = plot_masks(im[i], masks, mcolors)  # image with masks shape(imh,imw,3)
-                annotator.im = scale_masks(im.shape[2:], im_masks, im0.shape)  # scale to original h, w
-                # Mask plotting ----------------------------------------------------------------------------------------
+                # Mask plotting
+                annotator.masks(masks,
+                                colors=[colors(x, True) for x in det[:, 5]],
+                                im_gpu=None if retina_masks else im[i])
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det[:, :6]):
@@ -187,7 +185,8 @@ def run(
                     cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
                     cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
                 cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
+                if cv2.waitKey(1) == ord('q'):  # 1 millisecond
+                    exit()
 
             # Save results (image with detections)
             if save_img:
@@ -249,6 +248,8 @@ def parse_opt():
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
+    parser.add_argument('--retina-masks', action='store_true', help='whether to plot masks in native resolution')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))

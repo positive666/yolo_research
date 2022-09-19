@@ -1,5 +1,7 @@
+# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 PyTorch Hub models https://pytorch.org/hub/ultralytics_yolov5
+
 Usage:
     import torch
     model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
@@ -11,6 +13,7 @@ import torch
 
 def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbose=True, device=None):
     """Creates or loads a YOLOv5 model
+
     Arguments:
         name (str): model name 'yolov5s' or path 'path/to/best.pt'
         pretrained (bool): load pretrained weights into the model
@@ -19,6 +22,7 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
         autoshape (bool): apply YOLOv5 .autoshape() wrapper to model
         verbose (bool): print all information to screen
         device (str, torch.device, None): device to use for model parameters
+
     Returns:
         YOLOv5 model
     """
@@ -43,7 +47,7 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
                 model = DetectMultiBackend(path, device=device, fuse=autoshape)  # detection model
                 if autoshape:
                     if model.pt and isinstance(model.model, ClassificationModel):
-                        LOGGER.warning('WARNING: ⚠️ YOLOv5 v6.2 ClassificationModel is not yet AutoShape compatible. '
+                        LOGGER.warning('WARNING ⚠️ YOLOv5 v6.2 ClassificationModel is not yet AutoShape compatible. '
                                        'You must pass torch tensors in BCHW to this model, i.e. shape(1,3,224,224).')
                     else:
                         model = AutoShape(model)  # for file/URI/PIL/cv2/np inputs and NMS
@@ -153,7 +157,7 @@ if __name__ == '__main__':
         np.zeros((320, 640, 3))]  # numpy
 
     # Inference
-    results = model(imgs)  # batched inference
+    results = model(imgs, size=320)  # batched inference
 
     # Results
     results.print()

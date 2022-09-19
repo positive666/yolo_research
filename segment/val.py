@@ -17,6 +17,7 @@ Usage - formats:
                                       yolov5s-seg.pb                 # TensorFlow GraphDef
                                       yolov5s-seg.tflite             # TensorFlow Lite
                                       yolov5s-seg_edgetpu.tflite     # TensorFlow Edge TPU
+                                      yolov5s-seg_paddle_model       # PaddlePaddle
 """
 
 import argparse
@@ -47,7 +48,7 @@ from utils.general import (LOGGER, NUM_THREADS, Profile, check_dataset, check_im
 from utils.metrics import ConfusionMatrix, box_iou
 from utils.plots import output_to_target, plot_val_study
 from utils.segment.dataloaders import create_dataloader
-from utils.segment.general import mask_iou, process_mask, process_mask_upsample, scale_masks
+from utils.segment.general import mask_iou, process_mask, process_mask_upsample, scale_image
 from utils.segment.metrics import Metrics, ap_per_class_box_and_mask
 from utils.segment.plots import plot_images_and_masks
 from utils.torch_utils import de_parallel, select_device, smart_inference_mode
@@ -252,28 +253,28 @@ def run(
 
         # Inference
         with dt[1]:
-            out, train_out = model(im)  # if training else model(im, augment=augment, val=True)  # inference, loss
+            preds, protos, train_out = model(im) if compute_loss else (*model(im, augment=augment)[:2], None)
 
         # Loss
         if compute_loss:
-            loss += compute_loss(train_out, targets, masks)[1]  # box, obj, cls
+            loss += compute_loss((train_out, protos), targets, masks)[1]  # box, obj, cls
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         with dt[2]:
-            out = non_max_suppression(out,
-                                      conf_thres,
-                                      iou_thres,
-                                      labels=lb,
-                                      multi_label=True,
-                                      agnostic=single_cls,
-                                      max_det=max_det,
-                                      nm=nm)
+            preds = non_max_suppression(preds,
+                                        conf_thres,
+                                        iou_thres,
+                                        labels=lb,
+                                        multi_label=True,
+                                        agnostic=single_cls,
+                                        max_det=max_det,
+                                        nm=nm)
 
         # Metrics
         plot_masks = []  # masks for plotting
-        for si, pred in enumerate(out):
+        for si, (pred, proto) in enumerate(zip(preds, protos)):
             labels = targets[targets[:, 0] == si, 1:]
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path, shape = Path(paths[si]), shapes[si][0]
@@ -291,8 +292,7 @@ def run(
             # Masks
             midx = [si] if overlap else targets[:, 0] == si
             gt_masks = masks[midx]
-            proto_out = train_out[1][si]
-            pred_masks = process(proto_out, pred[:, 6:], pred[:, :4], shape=im[si].shape[1:])
+            pred_masks = process(proto, pred[:, 6:], pred[:, :4], shape=im[si].shape[1:])
 
             # Predictions
             if single_cls:
@@ -319,7 +319,7 @@ def run(
             if save_txt:
                 save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
             if save_json:
-                pred_masks = scale_masks(im[si].shape[1:],
+                pred_masks = scale_image(im[si].shape[1:],
                                          pred_masks.permute(1, 2, 0).contiguous().cpu().numpy(), shape, shapes[si][1])
                 save_one_json(predn, jdict, path, class_map, pred_masks)  # append to COCO-JSON dictionary
             # callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
@@ -329,7 +329,7 @@ def run(
             if len(plot_masks):
                 plot_masks = torch.cat(plot_masks, dim=0)
             plot_images_and_masks(im, targets, masks, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)
-            plot_images_and_masks(im, output_to_target(out, max_det=15), plot_masks, paths,
+            plot_images_and_masks(im, output_to_target(preds, max_det=15), plot_masks, paths,
                                   save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
         # callbacks.run('on_val_batch_end')
@@ -345,7 +345,7 @@ def run(
     pf = '%22s' + '%11i' * 2 + '%11.3g' * 8  # print format
     LOGGER.info(pf % ("all", seen, nt.sum(), *metrics.mean_results()))
     if nt.sum() == 0:
-        LOGGER.warning(f'WARNING: no labels found in {task} set, can not compute metrics without labels ⚠️')
+        LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
@@ -434,13 +434,13 @@ def parse_opt():
 
 
 def main(opt):
-    #check_requirements(requirements=ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
+    check_requirements(requirements=ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         if opt.conf_thres > 0.001:  # https://github.com/ultralytics/yolov5/issues/1466
-            LOGGER.info(f'WARNING: confidence threshold {opt.conf_thres} > 0.001 produces invalid results ⚠️')
+            LOGGER.warning(f'WARNING ⚠️ confidence threshold {opt.conf_thres} > 0.001 produces invalid results')
         if opt.save_hybrid:
-            LOGGER.info('WARNING: --save-hybrid will return high mAP from hybrid labels, not from predictions alone ⚠️')
+            LOGGER.warning('WARNING ⚠️ --save-hybrid returns high mAP from hybrid labels, not from predictions alone')
         run(**vars(opt))
 
     else:

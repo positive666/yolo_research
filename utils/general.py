@@ -34,7 +34,7 @@ import torch
 import torchvision
 import yaml
 
-from utils import TryExcept
+from utils import TryExcept, emojis
 from torch.nn import functional as F
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
@@ -275,9 +275,6 @@ def is_chinese(s='人工智能'):
     return bool(re.search('[\u4e00-\u9fff]', str(s)))
 
 
-def emojis(str=''):
-    # Return platform-dependent emoji-safe version of string
-    return str.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else str
 
 
 def file_age(path=__file__):
@@ -353,7 +350,7 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
     # Check version vs. required version
     current, minimum = (pkg.parse_version(x) for x in (current, minimum))
     result = (current == minimum) if pinned else (current >= minimum)  # bool
-    s = f'{name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
+    s = f'WARNING ⚠️ {name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
     if hard:
         assert result, emojis(s)  # assert min requirements met
     if verbose and not result:
@@ -387,7 +384,7 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
                     LOGGER.info(check_output(f"pip install '{r}' {cmds[i] if cmds else ''}", shell=True).decode())
                     n += 1
                 except Exception as e:
-                    LOGGER.warning(f'{prefix} {e}')
+                    LOGGER.warning(f'{prefix} ❌ {e}')
             else:
                 LOGGER.info(f'{s}. Please install and rerun your command.')
 
@@ -406,7 +403,7 @@ def check_img_size(imgsz, s=32, floor=0):
         imgsz = list(imgsz)  # convert to list if tuple
         new_size = [max(make_divisible(x, int(s)), floor) for x in imgsz]
     if new_size != imgsz:
-        LOGGER.warning(f'WARNING: --img-size {imgsz} must be multiple of max stride {s}, updating to {new_size}')
+        LOGGER.warning(f'WARNING ⚠️ --img-size {imgsz} must be multiple of max stride {s}, updating to {new_size}')
     return new_size
 
 
@@ -605,9 +602,9 @@ def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1, retry
                 if success:
                     break
                 elif i < retry:
-                    LOGGER.warning(f'Download failure, retrying {i + 1}/{retry} {url}...')
+                    LOGGER.warning(f'⚠️ Download failure, retrying {i + 1}/{retry} {url}...')
                 else:
-                    LOGGER.warning(f'Failed to download {url}...')
+                    LOGGER.warning(f'❌ Failed to download {url}...')
 
         if unzip and success and f.suffix in ('.zip','.tar', '.gz'):
             LOGGER.info(f'Unzipping {f}...')
@@ -858,8 +855,10 @@ def non_max_suppression(prediction,
                         agnostic=False,
                         multi_label=False,
                         labels=(),
-                        max_det=300, kpt_label=False, nc=None, nkpt=None):
-    """Non-Maximum Suppression (NMS) on inference results to reject overlapping bounding boxes
+                        max_det=300, 
+                        nm=0,# number of masks
+                        ):
+    """Non-Maximum Suppression (NMS) on inference results to reject overlapping bounding boxes (segment and POSE)
 
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
@@ -870,7 +869,7 @@ def non_max_suppression(prediction,
         
     bs = prediction.shape[0]  # batch size
     if nc is None:
-        nc = prediction.shape[2] - 5  if not kpt_label else prediction.shape[2] - 56 # number of classes
+        nc = prediction.shape[2] -nm- 5  if not kpt_label else prediction.shape[2] - 56 # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
 
     # Checks
@@ -881,13 +880,15 @@ def non_max_suppression(prediction,
     # min_wh = 2  # (pixels) minimum box width and height
     max_wh = 7680  # (pixels) maximum box width and height
     max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
-    time_limit = 0.1 + 0.03 * bs  # seconds to quit after
+    time_limit = 0.5 + 0.05 * bs  # seconds to quit after
     redundant = True  # require redundant detections
     multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
     merge = False  # use merge-NMS
 
     t = time.time()
-    output = [torch.zeros((0, 6), device=prediction.device)] * bs
+    mi=5+nc 
+    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+   
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -896,7 +897,7 @@ def non_max_suppression(prediction,
         # Cat apriori labels if autolabelling
         if labels and len(labels[xi]):
             lb = labels[xi]
-            v = torch.zeros((len(lb), nc + 5), device=x.device)
+            v = torch.zeros((len(lb), nc + nm + 5), device=x.device)
             v[:, :4] = lb[:, 1:5]  # box
             v[:, 4] = 1.0  # conf
             v[range(len(lb)), lb[:, 0].long() + 5] = 1.0  # cls
@@ -911,21 +912,16 @@ def non_max_suppression(prediction,
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
+        mask = x[:, mi:]  # zero columns if no masks
 
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
-            i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
+            i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
+            x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
         else:  # best class only
-            if not kpt_label:
-                conf, j = x[:, 5:].max(1, keepdim=True)
-                x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
-            else:
-                kpts = x[:, 6:]
-                conf, j = x[:, 5:6].max(1, keepdim=True)
-                x = torch.cat((box, conf, j.float(), kpts), 1)[conf.view(-1) > conf_thres]
-                
-                
+            conf, j = x[:, 5:mi].max(1, keepdim=True)
+            x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+
         # Filter by class
         if classes is not None:
             x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
@@ -940,6 +936,8 @@ def non_max_suppression(prediction,
             continue
         elif n > max_nms:  # excess boxes
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence
+        else:
+            x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
 
         # Batched NMS
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
@@ -957,10 +955,10 @@ def non_max_suppression(prediction,
 
         output[xi] = x[i]
         if (time.time() - t) > time_limit:
-            LOGGER.warning(f'WARNING: NMS time limit {time_limit:.3f}s exceeded')
+            LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded
 
-    return output
+    return 
 
 def non_max_suppression_keypoint(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
                         labels=(), kpt_label=False, nc=None, nkpt=None):
@@ -969,6 +967,8 @@ def non_max_suppression_keypoint(prediction, conf_thres=0.25, iou_thres=0.45, cl
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
     """
+    if isinstance(prediction, (list, tuple)):  # YOLOv5 model in validation model, output = (inference_out, loss_out)
+        prediction = prediction[0]  # select only inference output
     if nc is None:
         nc = prediction.shape[2] - 5  if not kpt_label else prediction.shape[2] - 56 # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates

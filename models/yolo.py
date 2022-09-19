@@ -66,15 +66,16 @@ class Detect(nn.Module):
                 if self.onnx_dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
-                y = x[i].sigmoid()
+                y = x[i].clone()
+                y[..., :5 + self.nc].sigmoid_()
                 if self.inplace:
                     y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
                     y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
                 else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
-                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
+                    xy, wh, etc = y.split((2, 2, self.no - 4), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
                     xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
+                    xy, wh, etc = y.split((2, 2, self.no - 4), 4)
                 z.append(y.view(bs, -1, self.no))
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
@@ -979,7 +980,7 @@ class BaseModel(nn.Module):
         # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
         self = super()._apply(fn)
         m = self.model[-1]  # Detect()
-        if isinstance(m, Detect)or isinstance(m, ASFF_Detect) or isinstance(m, Decoupled_Detect):
+        if isinstance(m, (Detect,Segment, ISegment, IRSegment,ASFF_Detect,Decoupled_Detect,IKeypoint)):
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
@@ -1015,7 +1016,6 @@ class DetectionModel(BaseModel):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, ISegment, IRSegment)) else self.forward(x)
-            #print()
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 1)
@@ -1193,7 +1193,7 @@ class DetectionModel(BaseModel):
         for mi, s in zip(m.m, m.stride):  # from
             b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
             b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
-            b.data[:, 5:] += math.log(0.6 / (m.nc - 0.99)) if cf is None else torch.log(cf / cf.sum())  # cls
+            b.data[:, 5:5 + m.nc] += math.log(0.6 / (m.nc - 0.99999)) if cf is None else torch.log(cf / cf.sum())  # cls
             mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
     # def _print_biases(self):
         # m = self.model[-1]  # Detect() module
@@ -1416,7 +1416,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in (nn.Conv2d, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,DownC,Stem,
+        if m in {nn.Conv2d, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,DownC,Stem,
                  CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                   RepConv, RepConv_OREPA,RepBottleneck, RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC,  
                  Res, ResCSPA, ResCSPB, ResCSPC, 
@@ -1424,14 +1424,14 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  ResX, ResXCSPA, ResXCSPB, ResXCSPC, 
                  RepResX, RepResXCSPA, RepResXCSPB, RepResXCSPC,Ghost, GhostCSPA, GhostCSPB, GhostCSPC,
                  SwinTransformerBlock, STCSPA, STCSPB, STCSPC,
-                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC):
+                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC}:
                  
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in [BottleneckCSP, C3, C3TR,CTR3,C3Ghost, C3x, SPPCSPC, GhostSPPCSPC, 
+            if m in {BottleneckCSP, C3, C3TR,CTR3,C3Ghost, C3x, SPPCSPC, GhostSPPCSPC, 
                      BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                      RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC, 
                      ResCSPA, ResCSPB, ResCSPC, 
@@ -1440,10 +1440,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      RepResXCSPA, RepResXCSPB, RepResXCSPC,
                      GhostCSPA, GhostCSPB, GhostCSPC,DownC, 
                      STCSPA, STCSPB, STCSPC,
-                     ST2CSPA, ST2CSPB, ST2CSPC]:
+                     ST2CSPA, ST2CSPB, ST2CSPC}:
                 args.insert(2, n)  # number of repeats
                 n = 1
-            if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, DWConv, MixConv2d, Focus, ConvFocus, CrossConv, BottleneckCSP, C3, C3TR]:
+            if m in {Conv, GhostConv, Bottleneck, GhostBottleneck, DWConv, MixConv2d, Focus, ConvFocus, CrossConv, BottleneckCSP, C3, C3TR}:
                 if 'act' in d.keys():
                     args_dict = {"act" : d['act']}    
         elif m is nn.BatchNorm2d:
