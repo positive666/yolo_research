@@ -44,8 +44,8 @@ yolov5_research
 |   classify
 │   └─────     ##分类
 │   utils
-│   └─────
-|         .
+│   └───── .
+|         .           .
 |                     .
 |            	  . segment      ##分割的数据处理操作部分
 │     
@@ -53,7 +53,8 @@ yolov5_research
 |       .      ##其余为检测核心代码和通用部分
 ```
 
-</ details >
+</details>
+
 # Feature 🚀 
 
      - 以最新的yoloV5工程风格代码融合，针对High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，删除额外的三方库依赖，快速迭代
