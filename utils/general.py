@@ -766,7 +766,7 @@ def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0,kpt_label=False):
 def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] normalized where xy1=top-left, xy2=bottom-right
     if clip:
-        scale_boxes(x, (h - eps, w - eps))  # warning: inplace clip
+        clip_boxes(x, (h - eps, w - eps))  # warning: inplace clip
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[:, 0] = ((x[:, 0] + x[:, 2]) / 2) / w  # x center
     y[:, 1] = ((x[:, 1] + x[:, 3]) / 2) / h  # y center
@@ -832,10 +832,10 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None,kpt_label=False, s
         clip_boxes(boxes, img0_shape)
     return boxes
 
-def clip_boxes(boxes, shape,step=None):
+def clip_boxes(boxes, shape, step=None):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
     
-    if step is not  None:
+    if step is not None:
         boxes[:, 0::step].clamp_(0, shape[1])  # x1
         boxes[:, 1::step].clamp_(0, shape[0])  # y1
 
@@ -847,6 +847,7 @@ def clip_boxes(boxes, shape,step=None):
     else:  # np.array (faster grouped)
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, shape[1])  # x1, x2
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2    
+
 
 def clip_segments(boxes, shape):
     # Clip segments (xy1,xy2,...) to image shape (height, width)
