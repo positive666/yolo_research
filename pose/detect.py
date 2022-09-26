@@ -19,7 +19,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from models.experimental import attempt_load
 from pose.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow,   \
-    scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
+    scale_boxes, xyxy2xywh, strip_optimizer, set_logging, increment_path
 from utils.plots import colors, plot_one_box,save_one_box
 from utils.torch_utils import select_device, time_sync
 from utils.general import non_max_suppression_keypoint as non_max_suppression
@@ -107,8 +107,8 @@ def detect(opt):
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
-                scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
-                scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
+                scale_boxes(img.shape[2:], det[:, :4], im0.shape, kpt_label=False)
+                scale_boxes(img.shape[2:], det[:, 6:], im0.shape, kpt_label=kpt_label, step=3)
 
                 # Print results
                 for c in det[:, 5].unique():

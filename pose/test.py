@@ -17,7 +17,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from models.experimental import attempt_load
 from utils.dataloaders import create_dataloader
 from utils.general import coco80_to_coco91_class, check_dataset, check_file, check_img_size, check_requirements, \
-    box_iou,  scale_coords, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
+    box_iou,  scale_boxes, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
 from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode,time_sync
@@ -176,9 +176,9 @@ def test(data,
             if single_cls:
                 pred[:, 5] = 0
             predn = pred.clone()
-            scale_coords(img[si].shape[1:], predn[:,:4], shapes[si][0], shapes[si][1], kpt_label=False)  # native-space pred
+            scale_boxes(img[si].shape[1:], predn[:,:4], shapes[si][0], shapes[si][1], kpt_label=False)  # native-space pred
             if kpt_label:
-                scale_coords(img[si].shape[1:], predn[:,6:], shapes[si][0], shapes[si][1], kpt_label=kpt_label, step=3)  # native-space pred
+                scale_boxes(img[si].shape[1:], predn[:,6:], shapes[si][0], shapes[si][1], kpt_label=kpt_label, step=3)  # native-space pred
             # Append to text file
             if save_txt:
                 gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]]  # normalization gain whwh
@@ -232,10 +232,10 @@ def test(data,
 
                 # target boxes
                 tbox  = xywh2xyxy(labels[:, 1:5])
-                scale_coords(img[si].shape[1:], tbox, shapes[si][0], shapes[si][1], kpt_label=False)  # native-space labels, kpt_label is set to False as we are dealing with boxes here
+                scale_boxes(img[si].shape[1:], tbox, shapes[si][0], shapes[si][1], kpt_label=False)  # native-space labels, kpt_label is set to False as we are dealing with boxes here
                 if kpt_label:
                     tkpt = labels[:, 5:]
-                    scale_coords(img[si].shape[1:], tkpt, shapes[si][0], shapes[si][1], kpt_label=kpt_label)  # native-space labels
+                    scale_boxes(img[si].shape[1:], tkpt, shapes[si][0], shapes[si][1], kpt_label=kpt_label)  # native-space labels
 
                 if plots:
                     confusion_matrix.process_batch(predn, torch.cat((labels[:, 0:1], tbox), 1))
