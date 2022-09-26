@@ -810,8 +810,8 @@ def resample_segments(segments, n=1000):
     return segments
 
 
-def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None,kpt_label=False, step=2):
-    # Rescale coords (xyxy) from img1_shape to img0_shape
+def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None,kpt_label=False, step=2):
+    # Rescale boxe (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:  # calculate from img0_shape
         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
         pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
@@ -820,20 +820,19 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None,kpt_label=False,
         pad = ratio_pad[1]
         
     if kpt_label:
-        coords[:, 0::step] -= pad[0]  # x padding
-        coords[:, 1::step] -= pad[1]  # y padding
-        coords[:, 0::step] /= gain
-        coords[:, 1::step] /= gain
-        clip_coords(coords, img0_shape, step=step)
+        boxes[:, 0::step] -= pad[0]  # x padding
+        boxes[:, 1::step] -= pad[1]  # y padding
+        boxes[:, 0::step] /= gain
+        boxes[:, 1::step] /= gain
+        clip_coords(boxes, img0_shape, step=step)
     else:    
-        coords[:, [0, 2]] -= pad[0]  # x padding
-        coords[:, [1, 3]] -= pad[1]  # y padding
-        coords[:, :4] /= gain
-        clip_coords(coords, img0_shape)
-    return coords
+        boxes[:, [0, 2]] -= pad[0]  # x padding
+        boxes[:, [1, 3]] -= pad[1]  # y padding
+        boxes[:, :4] /= gain
+        clip_boxes(boxes, img0_shape)
+    return boxes
 
-
-def clip_coords(boxes, shape,step=None):
+def clip_boxes(boxes, shape,step=None):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
     
     if step is not  None:
@@ -848,6 +847,16 @@ def clip_coords(boxes, shape,step=None):
     else:  # np.array (faster grouped)
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, shape[1])  # x1, x2
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2    
+
+def clip_segments(boxes, shape):
+    # Clip segments (xy1,xy2,...) to image shape (height, width)
+    if isinstance(boxes, torch.Tensor):  # faster individually
+        boxes[:, 0].clamp_(0, shape[1])  # x
+        boxes[:, 1].clamp_(0, shape[0])  # y
+    else:  # np.array (faster grouped)
+        boxes[:, 0] = boxes[:, 0].clip(0, shape[1])  # x
+        boxes[:, 1] = boxes[:, 1].clip(0, shape[0])  # y
+
 
 def non_max_suppression(prediction,
                         conf_thres=0.25,
@@ -1363,7 +1372,7 @@ def apply_classifier(x, model, img, im0):
             d[:, :4] = xywh2xyxy(b).long()
 
             # Rescale boxes from img_size to im0 size
-            scale_coords(img.shape[2:], d[:, :4], im0[i].shape)
+            scale_boxes(img.shape[2:], d[:, :4], im0[i].shape)
 
             # Classes
             pred_cls1 = d[:, 5].long()
