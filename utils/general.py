@@ -766,7 +766,7 @@ def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0,kpt_label=False):
 def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] normalized where xy1=top-left, xy2=bottom-right
     if clip:
-        clip_coords(x, (h - eps, w - eps))  # warning: inplace clip
+        scale_boxes(x, (h - eps, w - eps))  # warning: inplace clip
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[:, 0] = ((x[:, 0] + x[:, 2]) / 2) / w  # x center
     y[:, 1] = ((x[:, 1] + x[:, 3]) / 2) / h  # y center
@@ -824,7 +824,7 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None,kpt_label=False, s
         boxes[:, 1::step] -= pad[1]  # y padding
         boxes[:, 0::step] /= gain
         boxes[:, 1::step] /= gain
-        clip_coords(boxes, img0_shape, step=step)
+        scale_boxes(boxes, img0_shape, step=step)
     else:    
         boxes[:, [0, 2]] -= pad[0]  # x padding
         boxes[:, [1, 3]] -= pad[1]  # y padding
