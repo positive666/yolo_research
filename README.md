@@ -195,6 +195,19 @@ python pose/detect.py --weights pose/pose_weights/yolov7-w6-pose.pt  --source  d
 ```
 
 ##  <div align="center">分割篇</div>
+
+###  Inference
+
+``` bash 
+python segment/predict.py --weights yolov5s-seg.pt --source 0                          
+```
+
+###  Train
+``` bash 
+python segment/train.py --data coco128-seg.yaml --weights yolov5s-seg.pt --img 640  # from pretrained (recommended)
+```
+
+
 ##  <div align="center">分类篇yolov5官方版本</div>
 YOLOv5 [release v6.2](https://github.com/ultralytics/yolov5/releases) brings support for classification model training, validation, prediction and export! We've made training classifier models super simple. Click below to get started.
 
