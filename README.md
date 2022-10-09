@@ -30,8 +30,12 @@
 	- 融合了代码做了部分的优化，这里看了下V7的代码优化较差，后续会集成精简版本的分类、分割、检测、POSE检测的结构，目前已经完成了一部分工作，更新频繁有问题欢迎反馈和提供实验结果。
 <p>
 
+关于这个项目的使用说明详请可参考此博客：
+[csdn持续更新](https://blog.csdn.net/weixin_44119362/article/details/126895964?spm=1001.2014.3001.5501)    
+
 <details >
 <summary>当前 Project 结构说明</summary>
+
 
 ```
 yolov5_research
@@ -64,7 +68,8 @@ yolov5_research
      - 早期集成的attention、self-attention维护和调试
      
      - 额外的网络结构和Tricks补充
-
+    	
+     - deepstream部署工程（目前git上是21年开源的5.1版本，后续会整理好说明上传6.1的版本）
 
 
 [CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
@@ -82,7 +87,33 @@ git clone https://github.com/positive666/yolov5_research  # clone
 cd yolov5_research
 pip install -r requirements.txt  # install
 ```
+
 </details>
+
+<details>
+<summary>Multi-GPU DistributedDataParallel </summary>
+使用DistributedDataParallel，多个进程只进行倒数传播，每个GPU都进行一次梯度求导和参数更新，这比DataParallel的方式更高效，因为DataParalledl只有一个主GPU进行参数更新，所以需要各个子进程调用的GPU传递倒数到主GPU后，才会更新参数給各个GPU，所以这会比DistributedDataParallel每个GPU直接进行参数更新要慢很多。 –nproc_per_node: 作为GPU的使用数量节点数 –batch：总batch-size ,然后除以Node数量 ，平均给每个GPU。
+```bash
+python -m torch.distributed.run --nproc_per_node 2 train.py --batch 64 --data coco.yaml --weights yolov5s.pt --device 0,1
+```
+</details>  
+
+<details>
+<summary>Multi -machines && Multi-GPU </summary>
+```bash
+主机
+python -m torch.distributed.run --nproc_per_node G --nnodes N --node_rank 0 --master_addr "192.168.1.1" --master_port 1234 train.py --batch 64 --data coco.yaml --cfg yolov5s.yaml --weights ''
+#多个副机
+python -m torch.distributed.run --nproc_per_node G --nnodes N --node_rank R --master_addr "192.168.1.1" --master_port 1234 train.py --batch 64 --data coco.yaml --cfg yolov5s.yaml --weights ''
+```
+–master_port：端口号
+master_addr：主进程ip地址
+G:每个机器的GPU数量
+N:机器数量
+R:子机器序号
+
+</details>  
+
 
 ## <div align="center">目标检测篇</div>
 
