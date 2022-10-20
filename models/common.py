@@ -17,14 +17,15 @@ import pandas as pd
 import requests
 import torch
 import torch.nn as nn
+from IPython.display import display
 import yaml
 import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
-
+from utils import TryExcept
 from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr, increment_path,
-                           make_divisible, non_max_suppression, scale_boxes, xywh2xyxy, xyxy2xywh,yaml_load)
+                           is_notebook,make_divisible, non_max_suppression, scale_boxes, xywh2xyxy, xyxy2xywh,yaml_load)
 from utils.plots import Annotator, colors,save_one_box
 from utils.torch_utils import copy_attr,smart_inference_mode
 
@@ -1170,7 +1171,7 @@ class Detections:
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
             if show:
-                im.show(self.files[i])  # show
+                display(im) if is_notebook() else im.show(self.files[i])  # show
             if save:
                 f = self.files[i]
                 im.save(save_dir / f)  # save
@@ -1185,7 +1186,7 @@ class Detections:
             if save:
                 LOGGER.info(f'Saved results to {save_dir}\n')
             return crops
-
+    @TryExcept('showing images is not supported in this environment')
     def show(self, labels=True):
         self._run(show=True, labels=labels)  # show results
 

@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5_Research
 """
 Run inference on images, videos, directories, streams, etc.
 
@@ -102,7 +102,7 @@ def run(
     # Dataloader
     bs=1
     if webcam:
-        view_img = check_imshow()
+        view_img = check_imshow(warn=True)
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
         bs = len(dataset)  # batch_size

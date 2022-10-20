@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5_reasearch
 """
 General utils
 """
@@ -27,6 +27,7 @@ from typing import Optional
 from zipfile import ZipFile
 
 import cv2
+import IPython
 import numpy as np
 import pandas as pd
 import pkg_resources as pkg
@@ -44,7 +45,6 @@ ROOT = FILE.parents[1]  # YOLOv5 root directory
 RANK = int(os.getenv('RANK', -1))
 
 # Settings
-
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
 DATASETS_DIR = Path(os.getenv('YOLOv5_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
 AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
@@ -61,12 +61,7 @@ os.environ['OMP_NUM_THREADS'] = '1' if platform.system() == 'darwin' else str(NU
 
 def is_kaggle():
     # Is environment a Kaggle Notebook?
-    try:
-        assert os.environ.get('PWD') == '/kaggle/working'
-        assert os.environ.get('KAGGLE_URL_BASE') == 'https://www.kaggle.com'
-        return True
-    except AssertionError:
-        return False
+    return os.environ.get('PWD')=='/Kaggle/working' and os.environ.get('KAGGLE_URL_BASE')=='https://www.kaggle.com'
 
 
 def is_writeable(dir, test=False):
@@ -99,11 +94,12 @@ def set_logging(name=None, verbose=VERBOSE):
 
 
 set_logging()  # run before defining LOGGER
-LOGGER = logging.getLogger("yolov5")  # define globally (used in train.py, val.py, detect.py, etc.)
-for fn in LOGGER.info, LOGGER.warning:
-    _fn, fn = fn, lambda x: _fn(emojis(x))  # emoji safe logging
+LOGGER = logging.getLogger("yolov5_research")  # define globally (used in train.py, val.py, detect.py, etc.)
+if platform.system() == 'Windows':
+    for fn in LOGGER.info, LOGGER.warning:
+        setattr(LOGGER, fn.__name__, lambda x: fn(emojis(x)))  # emoji safe logging
 
-def user_config_dir(dir='Ultralytics', env_var='YOLOV5_CONFIG_DIR'):
+def user_config_dir(dir='positive666', env_var='YOLOV5_CONFIG_DIR'):
     # Return path of user configuration directory. Prefer environment variable if exists. Make dir if required.
     env = os.getenv(env_var)
     if env:
@@ -247,19 +243,23 @@ def get_latest_run(search_dir='.'):
 
 
 def is_docker():
-    # Is environment a Docker container?
-    return Path('/workspace').exists()  # or Path('/.dockerenv').exists()
-
+    #"""Check if the process run inside a docker container."""
+    if Path("/.dockerenv").exists():
+        return True 
+    try:
+        with open("/proc/self/cgroup")as file:
+            return any("docker" in line for line in file)
+    except OSError:
+        return False 
 
 def is_colab():
     # Is environment a Google Colab instance?
-    try:
-        import google.colab
-        return True
-    except ImportError:
-        return False
-
-
+    return 'COLAB_GPU' in os.environ 
+        
+def is_notebook():
+    ipython_type=str(type(IPython.get_ipython()))
+    return 'colab' in ipython_type or 'zmpshell' in ipython_type
+    
 def is_pip():
     # Is file in a pip package?
     return 'site-packages' in Path(__file__).resolve().parts
@@ -274,8 +274,6 @@ def is_ascii(s=''):
 def is_chinese(s='人工智能'):
     # Is string composed of any Chinese characters?
     return bool(re.search('[\u4e00-\u9fff]', str(s)))
-
-
 
 
 def file_age(path=__file__):
@@ -408,18 +406,19 @@ def check_img_size(imgsz, s=32, floor=0):
     return new_size
 
 
-def check_imshow():
+def check_imshow(warn=False):
     # Check if environment supports image displays
     try:
         assert not is_docker(), 'cv2.imshow() is disabled in Docker environments'
-        assert not is_colab(), 'cv2.imshow() is disabled in Google Colab environments'
+        assert not is_notebook(), 'cv2.imshow() is disabled in Google Colab environments'
         cv2.imshow('test', np.zeros((1, 1, 3)))
         cv2.waitKey(1)
         cv2.destroyAllWindows()
         cv2.waitKey(1)
         return True
     except Exception as e:
-        LOGGER.warning(f'WARNING: Environment does not support cv2.imshow() or PIL Image.show() image displays\n{e}')
+        if warn:
+            LOGGER.warning(f'WARNING: Environment does not support cv2.imshow() or PIL Image.show() image displays\n{e}')
         return False
 
 
@@ -519,7 +518,7 @@ def check_dataset(data, autodownload=True):
                     LOGGER.info(f'Downloading {s} to {f}...')
                     torch.hub.download_url_to_file(s, f)
                     Path(root).mkdir(parents=True, exist_ok=True)  # create root
-                    ZipFile(f).extractall(path=root)  # unzip
+                    unzip_file(f,path=DATASETS_DIR)  # unzip
                     Path(f).unlink()  # remove zip
                     r = None  # success
                 elif s.startswith('bash '):  # bash script
@@ -575,7 +574,15 @@ def yaml_save(file='data.yaml', data={}):
     with open(file, 'w') as f:
         yaml.safe_dump({k: str(v) if isinstance(v, Path) else v for k, v in data.items()}, f, sort_keys=False)
 
-
+def unzip_file(file, path=None, exclude=('.DS_Store', '__MACOSX')):
+    # Unzip a *.zip file to path/, excluding files containing strings in exclude list
+    if path is None:
+        path = Path(file).parent  # default path
+    with ZipFile(file) as zipObj:
+        for f in zipObj.namelist():  # list all archived filenames in the zip
+            if all(x not in f for x in exclude):
+                zipObj.extract(f, path=path)
+                
 def url2file(url):
     # Convert URL to filename, i.e. https://url.com/file.txt?auth -> file.txt
     url = str(Path(url)).replace(':/', '://')  # Pathlib turns :// -> :/
@@ -610,7 +617,7 @@ def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1, retry
         if unzip and success and f.suffix in ('.zip','.tar', '.gz'):
             LOGGER.info(f'Unzipping {f}...')
             if f.suffix == '.zip':
-                ZipFile(f).extractall(path=dir)  # unzip
+                unzip_file(f,dir)  # unzip
             elif f.suffix == '.tar':
                 os.system(f'tar xf {f} --directory {f.parent}')  # unzip    
             elif f.suffix == '.gz':
@@ -1307,7 +1314,7 @@ def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_op
     x = torch.load(f, map_location=torch.device('cpu'))
     if x.get('ema'):
         x['model'] = x['ema']  # replace model with ema
-    for k in 'optimizer', 'best_fitness', 'wandb_id', 'ema', 'updates':  # keys
+    for k in 'optimizer', 'best_fitness', 'ema', 'updates':  # keys
         x[k] = None
     x['epoch'] = -1
     x['model'].half()  # to FP16

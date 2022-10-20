@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5_Research 🚀 by positive666
 """
 Train a YOLOv5 model on a custom dataset.
 
@@ -51,7 +51,6 @@ from utils.general import (LOGGER, check_amp, check_dataset, check_file, check_g
                            one_cycle, print_args, print_mutation, strip_optimizer)
 from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.loggers.wandb.wandb_utils import check_wandb_resume
 from utils.loss import ComputeLoss, ComputeLossOTA,ComputeLossAuxOTA,ComputeLossBinOTA
 from utils.metrics import fitness
 from utils.plots import plot_evolve, plot_labels
@@ -380,7 +379,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     'ema': deepcopy(ema.ema).half(),
                     'updates': ema.updates,
                     'optimizer': optimizer.state_dict(),
-                    'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None,
                     'opt': vars(opt),
                     'date': datetime.now().isoformat()}
 
@@ -491,7 +489,7 @@ def main(opt, callbacks=Callbacks()):
         check_requirements(exclude=['thop'])
 
     # Resume (from specified or most recent last.pt)
-    if opt.resume and not check_wandb_resume(opt) and not check_comet_resume(opt) and not  opt.evolve:
+    if opt.resume and not check_comet_resume(opt) and not opt.evolve:
         last = Path(opt.resume if isinstance(opt.resume, str) else get_latest_run())  # specified or most recent last.pt
         assert last.is_file(), f'ERROR: --resume checkpoint {last} does not exist'
         opt_yaml = last.parent.parent / 'opt.yaml'  # train options yaml

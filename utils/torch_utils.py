@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5_research by positive666 
 """
 PyTorch utils
 """
@@ -318,79 +318,80 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
     g = [], [], []  # optimizer parameter groups
     bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
     for v in model.modules():
-        if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias
-            g[2].append(v.bias)
-        if isinstance(v, bn):  # weight (no decay)
-            g[1].append(v.weight)
-        elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
-            g[0].append(v.weight)
-        elif hasattr(v, 'w1_weight') and isinstance(v.w1_weight, nn.Parameter) :
-            g[0].append(v.w1_weight)
-        elif hasattr(v, 'w2_weight') and isinstance(v.w2_weight, nn.Parameter) :
-            g[0].append(v.w2_weight)
-        elif hasattr(v,'relative_position_bias_weight') and isinstance(v.relative_position_bias_weight, nn.Parameter) :
-            g[0].append(v.relative_position_bias_weight)
-        elif hasattr(v,'tau') and isinstance(v.tau, nn.Parameter) :
-            g[0].append(v.tau)  
+        for p_name,p in v.named_parameters(recurse=0):
+            if p_name=="bias":  # bias
+                g[2].append(p)
+            elif p_name =='weight' and isinstance(v,bn):  # weight (no decay)
+                g[1].append(p)
+            # elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
+                # g[0].append(v.weight)
+            elif p_name =='w1_weight' and isinstance(v.w1_weight, nn.Parameter) :
+                g[0].append(p)
+            elif p_name=='w2_weight' and isinstance(v.w2_weight, nn.Parameter) :
+                g[0].append(p)
+            elif p_name=='relative_position_bias_weight' and isinstance(v.relative_position_bias_weight, nn.Parameter) :
+                g[0].append(p)
+            elif p_name=='tau' and isinstance(v.tau, nn.Parameter) :
+                g[0].append(p)  
 
-        # add yolov7 weights key   
+            # add yolov7 weights key   
         if hasattr(v, 'im'):
-            if hasattr(v.im, 'implicit'):           
-                g[0].append(v.im.implicit)
-            else:
-                for iv in v.im:
-                    g[0].append(iv.implicit)
+                if hasattr(v.im, 'implicit'):           
+                    g[0].append(v.im.implicit)
+                else:
+                    for iv in v.im:
+                        g[0].append(iv.implicit)
         if hasattr(v, 'imc'):
-            if hasattr(v.imc, 'implicit'):           
-                g[0].append(v.imc.implicit)
-            else:
-                for iv in v.imc:
-                    g[0].append(iv.implicit)
+                if hasattr(v.imc, 'implicit'):           
+                    g[0].append(v.imc.implicit)
+                else:
+                    for iv in v.imc:
+                        g[0].append(iv.implicit)
         if hasattr(v, 'imb'):
-            if hasattr(v.imb, 'implicit'):           
-                g[0].append(v.imb.implicit)
-            else:
-                for iv in v.imb:
-                    g[0].append(iv.implicit)
+                if hasattr(v.imb, 'implicit'):           
+                    g[0].append(v.imb.implicit)
+                else:
+                    for iv in v.imb:
+                        g[0].append(iv.implicit)
         if hasattr(v, 'imo'):
-            if hasattr(v.imo, 'implicit'):           
-                g[0].append(v.imo.implicit)
-            else:
-                for iv in v.imo:
-                    g[0].append(iv.implicit)
+                if hasattr(v.imo, 'implicit'):           
+                    g[0].append(v.imo.implicit)
+                else:
+                    for iv in v.imo:
+                        g[0].append(iv.implicit)
         if hasattr(v, 'ia'):
-            if hasattr(v.ia, 'implicit'):           
-                g[0].append(v.ia.implicit)
-            else:
-                for iv in v.ia:
-                    g[0].append(iv.implicit)
+                if hasattr(v.ia, 'implicit'):           
+                    g[0].append(v.ia.implicit)
+                else:
+                    for iv in v.ia:
+                        g[0].append(iv.implicit)
         if hasattr(v, 'attn'):
-            if hasattr(v.attn, 'logit_scale'):   
-                g[0].append(v.attn.logit_scale)
-            if hasattr(v.attn, 'q_bias'):   
-                g[0].append(v.attn.q_bias)
-            if hasattr(v.attn, 'v_bias'):  
-                g[0].append(v.attn.v_bias)
-            if hasattr(v.attn, 'relative_position_bias_table'):  
-                g[0].append(v.attn.relative_position_bias_table)
+                if hasattr(v.attn, 'logit_scale'):   
+                    g[0].append(v.attn.logit_scale)
+                if hasattr(v.attn, 'q_bias'):   
+                    g[0].append(v.attn.q_bias)
+                if hasattr(v.attn, 'v_bias'):  
+                    g[0].append(v.attn.v_bias)
+                if hasattr(v.attn, 'relative_position_bias_table'):  
+                    g[0].append(v.attn.relative_position_bias_table)
         if hasattr(v, 'rbr_dense'):
-            if hasattr(v.rbr_dense, 'weight_rbr_origin'):  
-                g[0].append(v.rbr_dense.weight_rbr_origin)
-            if hasattr(v.rbr_dense, 'weight_rbr_avg_conv'): 
-                g[0].append(v.rbr_dense.weight_rbr_avg_conv)
-            if hasattr(v.rbr_dense, 'weight_rbr_pfir_conv'):  
-                g[0].append(v.rbr_dense.weight_rbr_pfir_conv)
-            if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_idconv1'): 
-                g[0].append(v.rbr_dense.weight_rbr_1x1_kxk_idconv1)
-            if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_conv2'):   
-                g[0].append(v.rbr_dense.weight_rbr_1x1_kxk_conv2)
-            if hasattr(v.rbr_dense, 'weight_rbr_gconv_dw'):   
-                g[0].append(v.rbr_dense.weight_rbr_gconv_dw)
-            if hasattr(v.rbr_dense, 'weight_rbr_gconv_pw'):   
-                g[0].append(v.rbr_dense.weight_rbr_gconv_pw)
-            if hasattr(v.rbr_dense, 'vector'):   
-                g[0].append(v.rbr_dense.vector)  
-                
+                if hasattr(v.rbr_dense, 'weight_rbr_origin'):  
+                    g[0].append(v.rbr_dense.weight_rbr_origin)
+                if hasattr(v.rbr_dense, 'weight_rbr_avg_conv'): 
+                    g[0].append(v.rbr_dense.weight_rbr_avg_conv)
+                if hasattr(v.rbr_dense, 'weight_rbr_pfir_conv'):  
+                    g[0].append(v.rbr_dense.weight_rbr_pfir_conv)
+                if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_idconv1'): 
+                    g[0].append(v.rbr_dense.weight_rbr_1x1_kxk_idconv1)
+                if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_conv2'):   
+                    g[0].append(v.rbr_dense.weight_rbr_1x1_kxk_conv2)
+                if hasattr(v.rbr_dense, 'weight_rbr_gconv_dw'):   
+                    g[0].append(v.rbr_dense.weight_rbr_gconv_dw)
+                if hasattr(v.rbr_dense, 'weight_rbr_gconv_pw'):   
+                    g[0].append(v.rbr_dense.weight_rbr_gconv_pw)
+                if hasattr(v.rbr_dense, 'vector'):   
+                    g[0].append(v.rbr_dense.vector)  
+        
     if name == 'Adam':
         optimizer = torch.optim.Adam(g[2], lr=lr, betas=(momentum, 0.999))  # adjust beta1 to momentum
     elif name == 'AdamW':
