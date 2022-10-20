@@ -87,7 +87,7 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
         t = type(m)
         if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU, Detect, Model,ASFF_Detect,IDetect,IAuxDetect,IKeypoint,IBin):
             m.inplace = inplace  # torch 1.7.0 compatibility
-            if  isinstance(t, (Detect,Decoupled_Detect, ASFF_Detect,IDetect,IKeypoint,Segment,IKeypoint,IBin ))  and not isinstance(m.anchor_grid, list):
+            if isinstance(t, (Detect,Decoupled_Detect, ASFF_Detect,IDetect,IKeypoint,Segment,IKeypoint,IBin ))  and not isinstance(m.anchor_grid, list):
                 delattr(m, 'anchor_grid')
                 setattr(m, 'anchor_grid', [torch.zeros(1)] * m.nl)
         elif t is Conv:
