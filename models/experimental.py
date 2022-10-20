@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from models.common import Conv
+from models.yolo import ASFF_Detect
 from utils.downloads import attempt_download
 
 
@@ -73,7 +74,7 @@ class Ensemble(nn.ModuleList):
 
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
-    from models.yolo import Detect, Model
+    from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IKeypoint,Segment,IBin
 
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
@@ -84,9 +85,9 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Compatibility updates
     for m in model.modules():
         t = type(m)
-        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU, Detect, Model):
+        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU, Detect, Model,ASFF_Detect,IDetect,IAuxDetect,IKeypoint,IBin):
             m.inplace = inplace  # torch 1.7.0 compatibility
-            if t is Detect and not isinstance(m.anchor_grid, list):
+            if  isinstance(t, (Detect,Decoupled_Detect, ASFF_Detect,IDetect,IKeypoint,Segment,IKeypoint,IBin ))  and not isinstance(m.anchor_grid, list):
                 delattr(m, 'anchor_grid')
                 setattr(m, 'anchor_grid', [torch.zeros(1)] * m.nl)
         elif t is Conv:
