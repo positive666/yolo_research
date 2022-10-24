@@ -41,6 +41,7 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     dynamic = False  # force grid reconstruction
     export = False  # export mode
+    gradcam=False 
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
@@ -55,6 +56,8 @@ class Detect(nn.Module):
         
     def forward(self, x):
         z = []  # inference output
+        ##2. add card 
+        logits_=[]
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -64,6 +67,7 @@ class Detect(nn.Module):
                 if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
+                logits=x[i][...,5:]
                 if isinstance(self, Segment):  # (boxes + masks)
                     xy, wh, conf, mask = x[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
                     xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
@@ -74,9 +78,14 @@ class Detect(nn.Module):
                     xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
                     y = torch.cat((xy, wh, conf), 4)
-                z.append(y.view(bs, self.na * nx * ny, self.no))
-
-        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
+                z.append(y.view(bs, self.na * nx * ny, self.no))   
+                ## 3. add card
+                if self.gradcam:
+                 logits_.append(logits.view(bs, -1, self.no - 5)) 
+        if z is not None:      
+            return (torch.cat(z, 1), torch.cat(logits_, 1), x)
+        else:
+            return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
         
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device

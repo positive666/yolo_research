@@ -152,7 +152,7 @@ class DetectMultiBackend(nn.Module):
         #   TorchScript:                    *.torchscript
         #   ONNX Runtime:                   *.onnx
         #   ONNX OpenCV DNN:                *.onnx with --dnn
-        #   OpenVINO:                       *.xml
+        #   OpenVINO:                       *._openvino_model
         #   CoreML:                         *.mlmodel
         #   TensorRT:                       *.engine
         #   TensorFlow SavedModel:          *_saved_model
@@ -291,7 +291,7 @@ class DetectMultiBackend(nn.Module):
             check_requirements('paddlepaddle-gpu' if cuda else 'paddlepaddle')
             import paddle.inference as pdi
             if not Path(w).is_file():  # if not *.pdmodel
-                w = next(Path(w).rglob('*.pdmodel'))  # get *.xml file from *_openvino_model dir
+                w = next(Path(w).rglob('*.pdmodel'))  # get *.pdmodel file from *_openvino_model dir
             weights = Path(w).with_suffix('.pdiparams')
             config = pdi.Config(str(w), str(weights))
             if cuda:
