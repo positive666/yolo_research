@@ -81,8 +81,8 @@ class Detect(nn.Module):
                 z.append(y.view(bs, self.na * nx * ny, self.no))   
                 ## 3. add card
                 if self.gradcam:
-                 logits_.append(logits.view(bs, -1, self.no - 5)) 
-        if z is not None:      
+                    logits_.append(logits.view(bs, -1, self.no - 5)) 
+        if logits_ is not None:      
             return (torch.cat(z, 1), torch.cat(logits_, 1), x)
         else:
             return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
