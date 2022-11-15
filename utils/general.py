@@ -379,7 +379,7 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
             if install and AUTOINSTALL:  # check environment variable
                 LOGGER.info(f"{s}, attempting auto-update...")
                 try:
-                    assert check_online(), f"'pip install {r}' skipped (offline)"
+                    #assert check_online(), f"'pip install {r}' skipped (offline)"
                     LOGGER.info(check_output(f"pip install '{r}' {cmds[i] if cmds else ''}", shell=True).decode())
                     n += 1
                 except Exception as e:
