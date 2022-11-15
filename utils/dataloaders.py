@@ -636,6 +636,7 @@ class LoadImagesAndLabels(Dataset):
 
         # Cache images into RAM/disk for faster training 
         if cache_images=='ram' and not self.check_cacha_ram(prefix=preifx):
+            cache_images=False
         self.ims = [None] * n
         self.npy_files = [Path(f).with_suffix('.npy') for f in self.im_files]
         if cache_images:
