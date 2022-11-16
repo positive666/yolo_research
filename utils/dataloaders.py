@@ -654,7 +654,7 @@ class LoadImagesAndLabels(Dataset):
                 pbar.desc = f'{prefix}Caching images ({b / gb:.1f}GB {cache_images})'
             pbar.close()
     
-     def check_cache_ram(self, safety_margin=0.1, prefix=''):
+    def check_cache_ram(self, safety_margin=0.1, prefix=''):
         # Check image caching requirements vs available memory
         b, gb = 0, 1 << 30  # bytes of cached images, bytes per gigabytes
         n = min(self.n, 30)  # extrapolate from 30 random images
