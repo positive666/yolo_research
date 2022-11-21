@@ -363,7 +363,7 @@ def check_git_status(repo='positive666/yolov5_research', branch='master'):
     if any(matches):
         remote = splits[matches.index(True) - 1]
     else:
-        remote = 'ultralytics'
+        remote = 'positive666'
         check_output(f'git remote add {remote} {url}', shell=True)
     check_output(f'git fetch {remote}', shell=True, timeout=5)  # git fetch
     local_branch = check_output('git rev-parse --abbrev-ref HEAD', shell=True).decode().strip()  # checked out
@@ -377,7 +377,8 @@ def check_git_status(repo='positive666/yolov5_research', branch='master'):
 
 
 @WorkingDirectory(ROOT)
-def check_git_info(path=' '):
+def check_git_info(path='.'):
+    #git info check 
     check_requirements('gitpython')
     import git
     try:
