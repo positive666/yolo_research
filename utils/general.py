@@ -327,11 +327,16 @@ def file_size(path):
 def check_online():
     # Check internet connectivity
     import socket
-    try:
-        socket.create_connection(("1.1.1.1", 443), 5)  # check host accessibility
-        return True
-    except OSError:
-        return False
+
+    def run_once():
+        # Check once
+        try:
+            socket.create_connection(("1.1.1.1", 443), 5)  # check host accessibility
+            return True
+        except OSError:
+            return False
+
+    return run_once() or run_once()  # check twice to increase robustness to intermittent connectivity issues
 
 
 def git_describe(path=ROOT):  # path must be a directory
@@ -345,23 +350,31 @@ def git_describe(path=ROOT):  # path must be a directory
 
 @TryExcept()
 @WorkingDirectory(ROOT)
-def check_git_status():
-    # Recommend 'git pull' if code is out of date
-    msg = ', for updates see https://github.com/positive666/yolov5'
+def check_git_status(repo='positive666/yolov5_research', branch='master'):
+    # YOLOv5 status check, recommend 'git pull' if code is out of date
+    url = f'https://github.com/{repo}'
+    msg = f', for updates see {url}'
     s = colorstr('github: ')  # string
     assert Path('.git').exists(), s + 'skipping check (not a git repository)' + msg
-    assert not is_docker(), s + 'skipping check (Docker image)' + msg
     assert check_online(), s + 'skipping check (offline)' + msg
 
-    cmd = 'git fetch && git config --get remote.origin.url'
-    url = check_output(cmd, shell=True, timeout=5).decode().strip().rstrip('.git')  # git fetch
-    branch = check_output('git rev-parse --abbrev-ref HEAD', shell=True).decode().strip()  # checked out
-    n = int(check_output(f'git rev-list {branch}..origin/master --count', shell=True))  # commits behind
+    splits = re.split(pattern=r'\s', string=check_output('git remote -v', shell=True).decode())
+    matches = [repo in s for s in splits]
+    if any(matches):
+        remote = splits[matches.index(True) - 1]
+    else:
+        remote = 'ultralytics'
+        check_output(f'git remote add {remote} {url}', shell=True)
+    check_output(f'git fetch {remote}', shell=True, timeout=5)  # git fetch
+    local_branch = check_output('git rev-parse --abbrev-ref HEAD', shell=True).decode().strip()  # checked out
+    n = int(check_output(f'git rev-list {local_branch}..{remote}/{branch} --count', shell=True))  # commits behind
     if n > 0:
-        s += f"⚠️ YOLOv5 is out of date by {n} commit{'s' * (n > 1)}. Use `git pull` or `git clone {url}` to update."
+        pull = 'git pull' if remote == 'origin' else f'git pull {remote} {branch}'
+        s += f"⚠️ YOLOv5 is out of date by {n} commit{'s' * (n > 1)}. Use `{pull}` or `git clone {url}` to update."
     else:
         s += f'up to date with {url} ✅'
-    LOGGER.info(s)  # emoji-safe
+    LOGGER.info(s)
+
 
 @WorkingDirectory(ROOT)
 def check_git_info(path=' '):
