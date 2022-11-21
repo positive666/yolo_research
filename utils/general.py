@@ -13,7 +13,6 @@ import os
 import platform
 import random
 import re
-import shutil
 import signal
 import sys
 import time
@@ -363,6 +362,21 @@ def check_git_status():
         s += f'up to date with {url} ✅'
     LOGGER.info(s)  # emoji-safe
 
+@WorkingDirectory(ROOT)
+def check_git_info(path=' '):
+    check_requirements('gitpython')
+    import git
+    try:
+        repo=git.Repo(path)
+        remote=repo.remotes.origin.url.replace('.git','')
+        commit=repo.head.commit.hexsha
+        try:
+            branch=repo.active_branch.name
+        except TypeError:
+            branch=None
+        return{'remote':remote,'branch':branch,'commit':commit}
+    except git.exc.InvalidGitRepositoryError:
+        return {'remote':None,'branch':None,'commit':None }
 
 def check_python(minimum='3.7.0'):
     # Check current python version vs. required python version

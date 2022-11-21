@@ -1,8 +1,8 @@
 # YOLOv5_research by positive666 
+
 """
 PyTorch utils
 """
-
 import math
 import os
 import platform
@@ -32,6 +32,7 @@ except ImportError:
 
 # Suppress PyTorch warnings
 warnings.filterwarnings('ignore', message='User provided device_type of \'cuda\', but CUDA is not available. Disabling')
+warnings.filterwarnings('ignore', category=UserWarning)
 
 
 def smart_inference_mode(torch_1_9=check_version(torch.__version__, '1.9.0')):
@@ -41,6 +42,7 @@ def smart_inference_mode(torch_1_9=check_version(torch.__version__, '1.9.0')):
 
     return decorate
 
+
 def smartCrossEntropyLoss(label_smoothing=0.0):
     # Returns nn.CrossEntropyLoss with label smoothing enabled for torch>=1.10.0
     if check_version(torch.__version__, '1.10.0'):
@@ -48,6 +50,7 @@ def smartCrossEntropyLoss(label_smoothing=0.0):
     if label_smoothing > 0:
         LOGGER.warning(f'WARNING ⚠️ label smoothing {label_smoothing} requires torch>=1.10.0')
     return nn.CrossEntropyLoss()
+
 
 def smart_DDP(model):
     # Model DDP creation with checks
@@ -58,6 +61,7 @@ def smart_DDP(model):
         return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK, static_graph=True)
     else:
         return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
+
 
 def reshape_classifier_output(model, n=1000):
     # Update a TorchVision classification model to class count 'n' if required
@@ -78,7 +82,7 @@ def reshape_classifier_output(model, n=1000):
         elif nn.Conv2d in types:
             i = types.index(nn.Conv2d)  # nn.Conv2d index
             if m[i].out_channels != n:
-                m[i] = nn.Conv2d(m[i].in_channels, n, m[i].kernel_size, m[i].stride, bias=m[i].bias)
+                m[i] = nn.Conv2d(m[i].in_channels, n, m[i].kernel_size, m[i].stride, bias=m[i].bias is not None)
                 
 @contextmanager
 def torch_distributed_zero_first(local_rank: int):
