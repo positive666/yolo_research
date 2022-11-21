@@ -49,6 +49,7 @@ NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiproces
 DATASETS_DIR = Path(os.getenv('YOLOv5_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
 AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLOv5_VERBOSE', True)).lower() == 'true'  # global verbose mode
+TQDM_BAR_FORMAT = '{l_bar}{bar:10}| {n_fmt}/{total_fmt} {elapsed}'  # tqdm bar format   
 FONT = 'Arial.ttf'  # https://ultralytics.com/assets/Arial.ttf
 
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
@@ -79,7 +80,7 @@ def is_writeable(dir, test=False):
 
 
 def set_logging(name=None, verbose=VERBOSE):
-    # Sets level and returns logger
+    # Sets level and returns    
     if is_kaggle():
         for h in logging.root.handlers:
             logging.root.removeHandler(h)  # remove all handlers associated with the root logger object
@@ -1486,4 +1487,4 @@ def imshow(path, im):
 cv2.imread, cv2.imwrite, cv2.imshow = imread, imwrite, imshow  # redefine
 
 # Variables ------------------------------------------------------------------------------------------------------------
-NCOLS = 0 if is_docker() else shutil.get_terminal_size().columns  # terminal window size for tqdm
+#NCOLS = 0 if is_docker() else shutil.get_terminal_size().columns  # terminal window size for tqdm
