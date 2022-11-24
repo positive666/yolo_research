@@ -117,7 +117,7 @@ def select_device(device='', batch_size=0, newline=True):
         assert torch.cuda.is_available() and torch.cuda.device_count() >= len(device.replace(',', '')), \
             f"Invalid CUDA '--device {device}' requested, use '--device cpu' or pass valid CUDA device(s)"
 
-    if not (cpu or mps) and torch.cuda.is_available():  # prefer GPU if available
+    if not cpu and not  mps and torch.cuda.is_available():  # prefer GPU if available
         devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
         n = len(devices)  # device count
         if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
@@ -329,15 +329,16 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
                 g[1].append(p)
             # elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
                 # g[0].append(v.weight)
-            elif p_name =='w1_weight' and isinstance(v.w1_weight, nn.Parameter) :
+            # elif p_name =='w1_weight' and isinstance(v.w1_weight, nn.Parameter) :
+                # g[0].append(p)
+            # elif p_name=='w2_weight' and isinstance(v.w2_weight, nn.Parameter) :
+                # g[0].append(p)
+            # elif p_name=='relative_position_bias_weight' and isinstance(v.relative_position_bias_weight, nn.Parameter) :
+                # g[0].append(p)
+            # elif p_name=='tau' and isinstance(v.tau, nn.Parameter) :
+                # g[0].append(p)  
+            else :
                 g[0].append(p)
-            elif p_name=='w2_weight' and isinstance(v.w2_weight, nn.Parameter) :
-                g[0].append(p)
-            elif p_name=='relative_position_bias_weight' and isinstance(v.relative_position_bias_weight, nn.Parameter) :
-                g[0].append(p)
-            elif p_name=='tau' and isinstance(v.tau, nn.Parameter) :
-                g[0].append(p)  
-
             # add yolov7 weights key   
         if hasattr(v, 'im'):
                 if hasattr(v.im, 'implicit'):           
