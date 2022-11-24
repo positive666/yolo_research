@@ -73,7 +73,7 @@ class Ensemble(nn.ModuleList):
 
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
-    from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IBin,Segment
+    from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IBin,Kpt_Detect,IKeypoint,Segment
 
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
@@ -84,9 +84,9 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Compatibility updates
     for m in model.modules():
         t = type(m)
-        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU, Detect,Decoupled_Detect, ASFF_Detect,IDetect,Segment,IBin, IAuxDetect, Model):
+        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU,  Model):
             m.inplace = inplace  # torch 1.7.0 compatibility
-            if isinstance(t, (Detect,Decoupled_Detect, ASFF_Detect,IDetect,Segment,IBin, IAuxDetect))  and not isinstance(m.anchor_grid, list):
+            if isinstance(t, (Detect,Decoupled_Detect,Kpt_Detect,IKeypoint, ASFF_Detect,IDetect,Segment,IBin, IAuxDetect,Segment,IBin, IAuxDetect))  and not isinstance(m.anchor_grid, list):
             #if t is Detect and not isinstance(m.anchor_grid, list):
                 delattr(m, 'anchor_grid')
                 setattr(m, 'anchor_grid', [torch.zeros(1)] * m.nl)

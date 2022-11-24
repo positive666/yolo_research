@@ -1467,7 +1467,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f[0]]
         elif m is Foldcut:
             c2 = ch[f] // 2    
-        elif m in {Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment,IKeypoint}:    
+        elif m in {Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment}:    
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)   
@@ -1519,7 +1519,7 @@ if __name__ == '__main__':
     parser.add_argument('--profile', action='store_true', help='profile model speed')
     parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')
-    parser.add_argument('--kpt', action='store_true', help='test all yolo*.yaml')
+   # parser.add_argument('--kpt', action='store_true', help='test all yolo*.yaml')
     opt = parser.parse_args()
     opt.cfg = check_yaml(opt.cfg)  # check YAML
     print_args(vars(opt))
@@ -1527,8 +1527,8 @@ if __name__ == '__main__':
     
     # Create model
     im = torch.rand(opt.batch_size, 3, 640, 640).to(device)
-    if opt.kpt:
-        Model=kP_DetectionModel
+ #   if opt.kpt:
+       # Model=kP_DetectionModel
     model = Model(opt.cfg).to(device) 
 
     # Options
