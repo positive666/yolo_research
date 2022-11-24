@@ -884,7 +884,7 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None,kpt_label=False, s
         boxes[:, 1::step] -= pad[1]  # y padding
         boxes[:, 0::step] /= gain
         boxes[:, 1::step] /= gain
-        scale_boxes(boxes, img0_shape, step=step)
+        clip_boxes(boxes, img0_shape, step=step)
     else:    
         boxes[:, [0, 2]] -= pad[0]  # x padding
         boxes[:, [1, 3]] -= pad[1]  # y padding
