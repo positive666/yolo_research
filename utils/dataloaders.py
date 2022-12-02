@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
-                                 letterbox, mixup, random_perspective)
+                                 letterbox, mixup, random_perspective,pastein,sample_segments)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS,TQDM_BAR_FORMAT, check_dataset, check_requirements, check_yaml, clean_str,
                            colorstr,cv2, is_colab, is_kaggle, segments2boxes, unzip_file,xyn2xy, xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
@@ -395,7 +395,7 @@ class LoadWebcam:  # for inference
         s = f'webcam {self.count}: '
 
          # Process
-        im = letterbox(img0, self.img_size, stride=self.stride)[0]
+        im = letterbox(im0, self.img_size, stride=self.stride)[0]
         im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         im = np.ascontiguousarray(im)
 
@@ -633,7 +633,7 @@ class LoadImagesAndLabels(Dataset):
             self.batch_shapes = np.ceil(np.array(shapes) * img_size / stride + pad).astype(int) * stride
 
         # Cache images into RAM/disk for faster training 
-        if cache_images=='ram' and not self.check_cacha_ram(prefix=preifx):
+        if cache_images=='ram' and not self.check_cacha_ram(prefix=prefix):
             cache_images=False
         self.ims = [None] * n
         self.npy_files = [Path(f).with_suffix('.npy') for f in self.im_files]
@@ -1468,7 +1468,7 @@ class LoadImagesAndLabels_Kpt(Dataset):  # for training/testing
             self.im_hw0, self.im_hw = [None] * n, [None] * n
             fcn = self.cache_images_to_disk if cache_images == 'disk' else self.load_image
             results = ThreadPool(NUM_THREADS).imap(fcn, range(n))
-            pbar = tqdm(enumerate(results), total=n, bar_format=BAR_FORMAT, disable=LOCAL_RANK > 0)
+            pbar = tqdm(enumerate(results), total=n, bar_format=TQDM_BAR_FORMAT, disable=LOCAL_RANK > 0)
             for i, x in pbar:
                 if cache_images == 'disk':
                     gb += self.npy_files[i].stat().st_size
@@ -1564,19 +1564,19 @@ class LoadImagesAndLabels_Kpt(Dataset):  # for training/testing
         mosaic = self.mosaic and random.random() < hyp['mosaic']
         if mosaic:
             # Load mosaic
-            img, labels = load_mosaic(self, index)
+            img, labels = self.load_mosaic(self, index)
             shapes = None
 
             # MixUp https://arxiv.org/pdf/1710.09412.pdf
             if random.random() < hyp['mixup']:
-                img2, labels2 = load_mosaic(self, random.randint(0, self.n - 1))
+                img2, labels2 = self.load_mosaic(self, random.randint(0, self.n - 1))
                 r = np.random.beta(8.0, 8.0)  # mixup ratio, alpha=beta=8.0
                 img = (img * r + img2 * (1 - r)).astype(np.uint8)
                 labels = np.concatenate((labels, labels2), 0)
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = load_image(self, index)
+            img, (h0, w0), (h, w) = self.load_image(self, index)
             if self. tidl_load:
               h0, w0 = self.img_sizes[index][:-1]   #modify the oroginal size for tidll loaded images
             # Letterbox
@@ -1608,7 +1608,7 @@ class LoadImagesAndLabels_Kpt(Dataset):  # for training/testing
 
         nL = len(labels)  # number of labels
         if nL:
-            labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])  # convert xyxy to xywh
+            labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5])  # convert xyxy to xywh
             labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
             if self.kpt_label:

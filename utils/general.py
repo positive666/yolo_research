@@ -892,6 +892,25 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None,kpt_label=False, s
         clip_boxes(boxes, img0_shape)
     return boxes
 
+def scale_segments(img1_shape, segments, img0_shape, ratio_pad=None, normalize=False):
+    # Rescale coords (xyxy) from img1_shape to img0_shape
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+        pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+    else:
+        gain = ratio_pad[0][0]
+        pad = ratio_pad[1]
+
+    segments[:, 0] -= pad[0]  # x padding
+    segments[:, 1] -= pad[1]  # y padding
+    segments /= gain
+    clip_segments(segments, img0_shape)
+    if normalize:
+        segments[:, 0] /= img0_shape[1]  # width
+        segments[:, 1] /= img0_shape[0]  # height
+    return segments
+
+
 def clip_boxes(boxes, shape, step=None):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
     
@@ -1207,7 +1226,7 @@ def non_max_suppression_kp(prediction, conf_thres=0.25, iou_thres=0.45, classes=
     return output
 
 
-def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False, mask_iou=None, vote=False):
+def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False, mask_iou=None, vote=False): 
 
     if prediction.dtype is torch.float16:
         prediction = prediction.float()  # to FP32
@@ -1244,9 +1263,7 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
             continue
 
         a = attn[xi][xc[xi]]
-        base = bases[xi]
-
-        #bboxes = Boxes(box)
+        base = bases[xi] 
         if not isinstance(box, torch.Tensor):
             bboxes = torch.as_tensor(box, dtype=torch.float32, device=torch.device("cpu"))
         else:
@@ -1378,7 +1395,7 @@ def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_op
     LOGGER.info(f"Optimizer stripped from {f},{f' saved as {s},' if s else ''} {mb:.1f}MB")
 
 
-def print_mutation(keys, hyp, save_dir, bucket, prefix=colorstr('evolve: ')):
+def print_mutation(keys,results, hyp, save_dir, bucket, prefix=colorstr('evolve: ')):
     evolve_csv = save_dir / 'evolve.csv'
     evolve_yaml = save_dir / 'hyp_evolve.yaml'
     keys = tuple(keys) + tuple(hyp.keys())  # [results + hyps]
@@ -1399,11 +1416,11 @@ def print_mutation(keys, hyp, save_dir, bucket, prefix=colorstr('evolve: ')):
 
     # Save yaml
     with open(evolve_yaml, 'w') as f:
-        data = pd.read_csv(evolve_csv)
+        data = pd.read_csv(evolve_csv, skipinitialspace=True)
         data = data.rename(columns=lambda x: x.strip())  # strip keys
         i = np.argmax(fitness(data.values[:, :4]))  #
         generations = len(data)
-        f.write('# YOLOv5 Hyperparameter Evolution Results\n' + f'# Best generation: {i}\n' +
+        f.write('# YOLOv5_research Hyperparameter Evolution Results\n' + f'# Best generation: {i}\n' +
                 f'# Last generation: {generations - 1}\n' + '# ' + ', '.join(f'{x.strip():>20s}' for x in keys[:7]) +
                 '\n' + '# ' + ', '.join(f'{x:>20.5g}' for x in data.values[i, :7]) + '\n\n')
         yaml.safe_dump(data.loc[i][7:].to_dict(), f, sort_keys=False)
