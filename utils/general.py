@@ -739,7 +739,7 @@ def labels_to_class_weights(labels, nc=80):
         return torch.Tensor()
 
     labels = np.concatenate(labels, 0)  # labels.shape = (866643, 5) for COCO
-    classes = labels[:, 0].astype(np.int)  # labels = [class xywh]
+    classes = labels[:, 0].astype(int)  # labels = [class xywh]
     weights = np.bincount(classes, minlength=nc)  # occurrences per class
 
     # Prepend gridpoint count (for uCE training)
@@ -749,7 +749,7 @@ def labels_to_class_weights(labels, nc=80):
     weights[weights == 0] = 1  # replace empty bins with 1
     weights = 1 / weights  # number of targets per class
     weights /= weights.sum()  # normalize
-    return torch.from_numpy(weights)
+    return torch.from_numpy(weights).float()
 
 
 def labels_to_image_weights(labels, nc=80, class_weights=np.ones(80)):
