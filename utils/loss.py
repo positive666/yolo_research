@@ -487,7 +487,7 @@ class ComputeLossOTA:
         
             pair_wise_iou = box_iou(txyxy, pxyxys)
 
-            pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
+            pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8) 
 
             top_k, _ = torch.topk(pair_wise_iou, min(10, pair_wise_iou.shape[1]), dim=1)
             dynamic_ks = torch.clamp(top_k.sum(1).int(), min=1)
@@ -504,13 +504,24 @@ class ComputeLossOTA:
                 p_cls.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
                 * p_obj.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
             )
-
+        
+           # print(f"{cls_preds_.shape}:{cls_preds_}")
             y = cls_preds_.sqrt_()
             pair_wise_cls_loss = F.binary_cross_entropy_with_logits(
                torch.log(y/(1-y)) , gt_cls_per_image, reduction="none"
             ).sum(-1)
+            ##
+            # soft=gt_cls_per_image*pair_wise_iou[...,None]
+            # pair_wise_cls_loss = F.binary_cross_entropy(
+            #    torch.log(y/(1-y)) , soft, reduction="none"
+            # )*scale_factor.abs().pow(2.0).sum(-1)
+            # scale_factor=soft-cls_preds_
+            # print(f"xxxxx{scale_factor.shape}:{scale_factor}")
+            # print(f"xxxxx{pair_wise_cls_loss.shape}:{pair_wise_cls_loss}")
+            # pair_wise_cls_loss*=scale_factor.abs().pow(2.0)
+            # print(f"xxxxx{pair_wise_cls_loss.shape}:{pair_wise_cls_loss}")       
             del cls_preds_
-        
+            
             cost = (
                 pair_wise_cls_loss
                 + 3.0 * pair_wise_iou_loss
