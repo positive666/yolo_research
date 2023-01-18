@@ -242,23 +242,28 @@ class IDetect(nn.Module):
     stride = None  # strides computed during build
     dynamic = False  # force grid reconstruction
     export = False  # export mode
-
+    include_nms=False
+    end2end=False 
+    concat=False 
+    
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
-        self.grid = [torch.empty(1)] * self.nl  # init grid
-        self.anchor_grid = [torch.empty(1)] * self.nl  # init anchor grid
-        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
+        self.grid = [torch.zeros(1)] * self.nl  # init grid
+        a=torch.tensor(anchors).float().view(self.nl, -1, 2)
+        self.register_buffer('anchors', a)  # shape(nl,na,2)
+        self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
+        
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
-        self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         
         self.ia = nn.ModuleList(ImplicitA(x) for x in ch)
         self.im = nn.ModuleList(ImplicitM(self.no * self.na) for _ in ch)
 
     def forward(self, x):
+        
         z = []  # inference output
         for i in range(self.nl):
             x[i] = self.m[i](self.ia[i](x[i]))  # conv
@@ -266,19 +271,19 @@ class IDetect(nn.Module):
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
             if not self.training:  # inference
-                if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
+                if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4] :
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
 
-                y = x[i].clone()
-                y[..., :5 + self.nc].sigmoid_()
+                y=x[i].sigmoid()
                 if self.inplace:
-                    y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
+                    y[..., 0:2] = (y[..., 0:2] * 2 -0.5 + self.grid[i]) * self.stride[i]  # xy
                     y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                    
                 else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
-                    xy, wh, etc = y.split((2, 2, self.no - 4), 4)  # tensor_split((2, 4, 5), 4) if torch 1.8.0
+                    xy, wh, conf = y.split((2, 2, self.no - 4), 4)  # tensor_split((2, 4, 5), 4) if torch 1.8.0
                     xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, etc), 4)
+                    y = torch.cat((xy, wh, conf), 4)
                 z.append(y.view(bs, -1, self.no))
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
@@ -558,12 +563,9 @@ class IBin(nn.Module):
 
     def forward(self, x):
 
-        #self.x_bin_sigmoid.use_fw_regression = True
-        #self.y_bin_sigmoid.use_fw_regression = True
         self.w_bin_sigmoid.use_fw_regression = True
         self.h_bin_sigmoid.use_fw_regression = True
         
-        # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
         for i in range(self.nl):
@@ -579,10 +581,6 @@ class IBin(nn.Module):
                 y = x[i].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i]) * self.stride[i]  # xy
                 #y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
-                
-
-                #px = (self.x_bin_sigmoid.forward(y[..., 0:12]) + self.grid[i][..., 0]) * self.stride[i]
-                #py = (self.y_bin_sigmoid.forward(y[..., 12:24]) + self.grid[i][..., 1]) * self.stride[i]
 
                 pw = self.w_bin_sigmoid.forward(y[..., 2:24]) * self.anchor_grid[i][..., 0]
                 ph = self.h_bin_sigmoid.forward(y[..., 24:46]) * self.anchor_grid[i][..., 1]
