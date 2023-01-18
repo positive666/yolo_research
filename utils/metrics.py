@@ -209,7 +209,7 @@ class ConfusionMatrix:
                        vmin=0.0,
                        xticklabels=names + ['background FP'] if labels else "auto",
                        yticklabels=names + ['background FN'] if labels else "auto").set_facecolor((1, 1, 1))
-        ax.set_ylabel('True')
+        ax.set_xlabel('True')
         ax.set_ylabel('Predicted')
         ax.set_title('Confusion Matrix')
         fig.savefig(Path(save_dir) / 'confusion_matrix.png', dpi=250)
