@@ -93,7 +93,7 @@ def set_logging(name=None, verbose=VERBOSE):
     handler.setLevel(level)
     log.addHandler(handler)
     
-LOGGING_NAME="yolov5_research"
+LOGGING_NAME="yolo_research"
 
 def set_logging(name=LOGGING_NAME, verbose=True):
     # sets up logging for the given name
@@ -350,7 +350,7 @@ def git_describe(path=ROOT):  # path must be a directory
 
 @TryExcept()
 @WorkingDirectory(ROOT)
-def check_git_status(repo='positive666/yolov5_research', branch='master'):
+def check_git_status(repo='positive666/yolo_research', branch='master'):
     # YOLOv5 status check, recommend 'git pull' if code is out of date
     url = f'https://github.com/{repo}'
     msg = f', for updates see {url}'
