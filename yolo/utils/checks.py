@@ -17,7 +17,7 @@ import numpy as np
 import pkg_resources as pkg
 import psutil
 import torch
-from IPython import display
+#from IPython import display
 from matplotlib import font_manager
 
 from yolo.utils import (AUTOINSTALL, LOGGER, ROOT, USER_CONFIG_DIR, TryExcept, colorstr, downloads, emojis,
