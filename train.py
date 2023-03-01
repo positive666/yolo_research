@@ -40,6 +40,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 import val as validate  # for end-of-epoch mAP
 from models.experimental import attempt_load
 from models.yolo import Model
+#from utils.data.build import build_dataloader
 from utils.autoanchor import check_anchors
 from utils.autobatch import check_train_batch_size
 from utils.callbacks import Callbacks
@@ -51,21 +52,23 @@ from utils.general import (LOGGER,TQDM_BAR_FORMAT, check_amp, check_dataset, che
                            one_cycle, print_args, print_mutation, strip_optimizer)
 from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.loss import ComputeLoss, ComputeLossOTA,ComputeLossAuxOTA,ComputeLossBinOTA
+from utils.loss import ComputeLoss, ComputeLossOTA,ComputeLossAuxOTA,ComputeLossBinOTA,ComputeLoss_V8
 from utils.metrics import fitness
 from utils.plots import plot_evolve, plot_labels
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
                                smart_resume,torch_distributed_zero_first)
-                               
+
+   
+                           
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
-GIT_INFO=check_git_info()
+#GIT_INFO=check_git_info()
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze,aux_ota_loss = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze,aux_ota_loss ,free_v8_loss= \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.aux_ota_loss
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,opt.aux_ota_loss,opt.free_v8_loss
     callbacks.run('on_pretrain_routine_start')
     
     compute_loss_ota=None 
@@ -182,6 +185,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         LOGGER.info('Using SyncBatchNorm()')
 
     # Trainloader
+    #from yolo.cfg import get_cfg
+    #default_args = get_cfg("utils/cfg/default.yaml", None)
     train_loader, dataset = create_dataloader(train_path,
                                               imgsz,
                                               batch_size // WORLD_SIZE,
@@ -197,7 +202,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               quad=opt.quad,
                                               prefix=colorstr('train: '),
                                               shuffle=True,
-                                              seed=opt.seed)
+                                              seed=opt.seed,
+                                             # load_v8=free_v8_loss
+                                              ) #if not  free_v8_loss else build_dataloader(default_args, batch_size, train_path, stride=gs, rank=LOCAL_RANK, mode="train")
     labels = np.concatenate(dataset.labels, 0)                                          
     mlc = int(labels[:, 0].max())  # max label class
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
@@ -238,7 +245,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
-
+    model.args=None
     # Start training
     t0 = time.time()
     nb = len(train_loader)  # number of batches
@@ -251,10 +258,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     if aux_ota_loss:
         compute_loss_ota = ComputeLossAuxOTA(model)  # init loss class 
-    else :
+    elif free_v8_loss:
+        print("init -anchor-free v8 lossfun")
+        compute_loss_ota= ComputeLoss_V8(model)
+    else:
         compute_loss_ota = ComputeLossOTA(model)
     stopper,stop= EarlyStopping(patience=opt.patience),False
-    compute_loss = ComputeLoss(model)  # init loss class
+ 
+    compute_loss = ComputeLoss(model)  if not free_v8_loss  else compute_loss_ota# init loss class
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
@@ -283,6 +294,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
+       
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
@@ -310,7 +322,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
+               # print("dttt:",pred)
                 loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs) if ( hyp['loss_ota']==1 ) else compute_loss(pred, targets.to(device)) # loss scaled by batch_size
+              
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -361,7 +375,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                            plots=False,
                                            callbacks=callbacks,
                                            compute_loss=compute_loss,
-                                           half=not opt.swin_float)
+                                           half=not opt.swin_float,
+                                          # v8=opt.free_v8_loss,
+                                           )
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
@@ -381,7 +397,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     'updates': ema.updates,
                     'optimizer': optimizer.state_dict(),
                     'opt': vars(opt),
-                    'git':GIT_INFO,
+                   # 'git':GIT_INFO,
                     'date': datetime.now().isoformat()}
 
                 # Save last, best and delete
@@ -479,7 +495,7 @@ def parse_opt(known=False):
     # swin float()
     parser.add_argument('--swin_float', action='store_true', help='swin not use half to train/Val')
     parser.add_argument('--aux_ota_loss', action='store_true', help='swin not use half to train/Val')
-    #parser.add_argument('--ota_match', action='store_true', help='swin not use half to train/Val')
+    parser.add_argument('--free_v8_loss', action='store_true', help='swin not use half to train/Val')
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
 

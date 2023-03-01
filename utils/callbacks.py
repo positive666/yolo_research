@@ -54,7 +54,7 @@ class Callbacks:
             hook: The name of the hook to check, defaults to all
         """
         return self._callbacks[hook] if hook else self._callbacks
-
+    
     def run(self, hook, *args, thread=False, **kwargs):
         """
         Loop through the registered actions and fire all callbacks on main thread

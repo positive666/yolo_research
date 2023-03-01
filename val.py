@@ -124,6 +124,7 @@ def run(
         callbacks=Callbacks(),
         compute_loss=None,
         trace=False,
+        v8=False,
 ):
     # Initialize/load model and set device
     training = model is not None
@@ -365,6 +366,7 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--trace', action='store_true', help='trace model')
+    parser.add_argument('--v8', action='store_true', help='trace model')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')

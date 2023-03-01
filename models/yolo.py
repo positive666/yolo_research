@@ -24,18 +24,88 @@ if platform.system() != 'Windows':
 from models.common import *
 from models.experimental import *
 from utils.autoanchor import check_anchor_order
-from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
+from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args,yaml_load
 from utils.plots import feature_visualization
-from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
+from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, intersect_dicts,profile, scale_img, select_device,
                                time_sync)
+from utils.tal import dist2bbox, make_anchors
 from utils.loss import SigmoidBin
-
 try:
     import thop  # for FLOPs computation
 except ImportError:
     thop = None
 
+## yolov8 head
+class V8_Detect(nn.Module):
+    # YOLOv8 Detect head for detection models
+    dynamic = False  # force grid reconstruction
+    export = False  # export mode
+    shape = None
+    anchors = torch.empty(0)  # init
+    strides = torch.empty(0)  # init
 
+    def __init__(self, nc=80, ch=()):  # detection layer
+        super().__init__()
+        self.nc = nc  # number of classes
+        self.nl = len(ch)  # number of detection layers
+        self.reg_max = 16  # DFL channels (ch[0] // 16 to scale 4/8/12/16/20 for n/s/m/l/x)
+        self.no = nc + self.reg_max * 4  # number of outputs per anchor
+        self.stride = torch.zeros(self.nl)  # strides computed during build
+
+        c2, c3 = max((16, ch[0] // 4, self.reg_max * 4)), max(ch[0], self.nc)  # channels
+        self.cv2 = nn.ModuleList(
+            nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
+        self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
+        self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
+
+    def forward(self, x):
+        shape = x[0].shape  # BCHW
+        for i in range(self.nl):
+            x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1)
+        if self.training:
+            return x
+        elif self.dynamic or self.shape != shape:
+            self.anchors, self.strides = (x.transpose(0, 1) for x in make_anchors(x, self.stride, 0.5))
+            self.shape = shape
+
+        box, cls = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2).split((self.reg_max * 4, self.nc), 1)
+        dbox = dist2bbox(self.dfl(box), self.anchors.unsqueeze(0), xywh=True, dim=1) * self.strides
+        y = torch.cat((dbox, cls.sigmoid()), 1)
+        return y if self.export else (y, x)
+
+    def bias_init(self):
+        # Initialize Detect() biases, WARNING: requires stride availability
+        m = self  # self.model[-1]  # Detect() module
+        # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1
+        # ncf = math.log(0.6 / (m.nc - 0.999999)) if cf is None else torch.log(cf / cf.sum())  # nominal class frequency
+        for a, b, s in zip(m.cv2, m.cv3, m.stride):  # from
+            a[-1].bias.data[:] = 1.0  # box
+            b[-1].bias.data[:m.nc] = math.log(5 / m.nc / (640 / s) ** 2)  # cls (.01 objects, 80 classes, 640 img)
+
+class V8_Segment(V8_Detect):
+    # YOLOv8 Segment head for segmentation models
+    def __init__(self, nc=80, nm=32, npr=256, ch=()):
+        super().__init__(nc, ch)
+        self.nm = nm  # number of masks
+        self.npr = npr  # number of protos
+        self.proto = Proto(ch[0], self.npr, self.nm)  # protos
+        self.detect = Detect.forward
+
+        c4 = max(ch[0] // 4, self.nm)
+        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.nm, 1)) for x in ch)
+
+    def forward(self, x):
+        p = self.proto(x[0])  # mask protos
+        bs = p.shape[0]  # batch size
+
+        mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
+        x = self.detect(self, x)
+        if self.training:
+            return x, mc, p
+        return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
+    
+    
+## yolov5 head
 class Detect(nn.Module):
     # YOLOv5 Detect head for detection models
     stride = None  # strides computed during build
@@ -926,7 +996,7 @@ class MT(nn.Module):
 
 
 class BaseModel(nn.Module):
-    # YOLOv5 base model
+    # YOLO base model
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
@@ -990,34 +1060,45 @@ class BaseModel(nn.Module):
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
                 m.anchor_grid = list(map(fn, m.anchor_grid))
+        elif isinstance(m,(V8_Detect,V8_Segment)):
+                m.stride=fn(m.stride)
+                m.anchors=fn(m.anchors)
+                m.strides=fn(m.strides)
         return self
 
 class DetectionModel(BaseModel):
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None,verbose=True):  # model, input channels, number of classes
         super().__init__()
-        if isinstance(cfg, dict):
-            self.yaml = cfg  # model dict
-        else:  # is *.yaml
-            import yaml  # for torch hub
-            self.yaml_file = Path(cfg).name
-            with open(cfg, encoding='ascii', errors='ignore') as f:
-                self.yaml = yaml.safe_load(f)  # model dict
-
+      
+        self.yaml = cfg if isinstance(cfg, dict) else yaml_load(check_yaml(cfg), append_filename=True)  # cfg dict  
+        # else:  # is *.yaml
+        #     import yaml  # for torch hub
+        #     self.yaml_file = Path(cfg).name
+        #     with open(cfg, encoding='ascii', errors='ignore') as f:
+        #         self.yaml = yaml.safe_load(f)  # model dict
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
         if nc and nc != self.yaml['nc']:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
+            
         if anchors:
             LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
             self.yaml['anchors'] = round(anchors)  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
-        self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
+            
+        if 'anchors' not in (self.yaml):       
+            LOGGER.info(f'Using model.yaml anchors with anchorsfree')   
+            if self.yaml['head'][-1][-2]=="Detect":
+                 self.yaml['head'][-1][-2]="V8_Detect"     # default names)
+            elif self.yaml['head'][-1][-2]=="Segment":
+                self.yaml['head'][-1][-2]="V8_Segment"
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch],verbose=verbose)  # model, savelist
+        self.names = {i:f'{i}' for i in range(self.yaml['nc'])} # default names
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment)):
+        if isinstance(m, (Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment)) :
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, ISegment, IRSegment)) else self.forward(x)
@@ -1030,12 +1111,18 @@ class DetectionModel(BaseModel):
         elif isinstance(m, Decoupled_Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.empty(1, ch, s, s))])  # forward
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
             self._initialize_dh_biases()  # only run once
-
+        elif isinstance(m,(V8_Detect,V8_Segment)):
+            s=256
+            m.inplace = self.inplace
+            forward=lambda x:self.forward(x)[0] if isinstance(m,V8_Segment) else self.forward_v8(x)
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward_v8(torch.zeros(1, ch, s, s))])  # forward
+            self.stride = m.stride
+            m.bias_init()  # onlu run once
         elif isinstance(m, IAuxDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[:4]])  # forward
@@ -1065,7 +1152,6 @@ class DetectionModel(BaseModel):
         elif isinstance(m, MT):
             s = 256  # 2x min stride
             temp = self.forward(torch.zeros(1, ch, s, s))
-            #print("xxx:",temp)
             if isinstance(temp, list):
                 temp = temp[0]
             m.stride = torch.tensor([s / x.shape[-2] for x in temp["bbox_and_cls"]])  # forward
@@ -1076,8 +1162,9 @@ class DetectionModel(BaseModel):
 
         # Init weights, biases
         initialize_weights(self)
-        self.info()
-        LOGGER.info('')
+        if verbose:
+            self.info()
+            LOGGER.info('')
 
  
     def forward(self, x, augment=False, profile=False, visualize=False):
@@ -1085,6 +1172,10 @@ class DetectionModel(BaseModel):
             return self._forward_augment(x)  # augmented inference, None
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
+    def forward_v8(self, x, augment=False, profile=False, visualize=False):
+        if augment:
+            return self._forward_augment_v8(x)  # augmented inference, None
+        return self._forward_once(x, profile, visualize)  # single-scale inference, train
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width
         s = [1, 0.83, 0.67]  # scales
@@ -1099,8 +1190,20 @@ class DetectionModel(BaseModel):
         y = self._clip_augmented(y)  # clip augmented tails
         return torch.cat(y, 1), None  # augmented inference, train
 
+    def _forward_augment_v8(self, x):
+        img_size = x.shape[-2:]  # height, width
+        s = [1, 0.83, 0.67]  # scales
+        f = [None, 3, None]  # flips (2-ud, 3-lr)
+        y = []  # outputs
+        for si, fi in zip(s, f):
+            xi = scale_img(x.flip(fi) if fi else x, si, gs=int(self.stride.max()))
+            yi = self._forward_once(xi)[0]  # forward
+            yi = self._descale_pred_v8(yi, fi, si, img_size)
+            y.append(yi)
+        y = self._clip_augmented(y)  # clip augmented tails
+        return torch.cat(y, -1), None  # augmented inference, train
     
-
+    @staticmethod
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
         if self.inplace:
@@ -1117,9 +1220,19 @@ class DetectionModel(BaseModel):
                 x = img_size[1] - x  # de-flip lr
             p = torch.cat((x, y, wh, p[..., 4:]), -1)
         return p
-
+    @staticmethod
+    def _descale_pred_v8(p, flips, scale, img_size, dim=1):
+        # de-scale predictions following augmented inference (inverse operation)
+        p[:, :4] /= scale  # de-scale
+        x, y, wh, cls = p.split((1, 1, 2, p.shape[dim] - 4), dim)
+        if flips == 2:
+            y = img_size[0] - y  # de-flip ud
+        elif flips == 3:
+            x = img_size[1] - x  # de-flip lr
+        return torch.cat((x, y, wh, cls), dim)
+    
     def _clip_augmented(self, y):
-        # Clip YOLOv5 augmented inference tails
+        # Clip YOLO augmented inference tails
         nl = self.model[-1].nl  # number of detection layers (P3-P5)
         g = sum(4 ** x for x in range(nl))  # grid points
         e = 1  # exclude layer count
@@ -1129,7 +1242,12 @@ class DetectionModel(BaseModel):
         y[-1] = y[-1][:, i:]  # small
         return y
 
-    
+    def load(self, weights, verbose=True):
+        csd = weights.float().state_dict()  # checkpoint state_dict as FP32
+        csd = intersect_dicts(csd, self.state_dict())  # intersect
+        self.load_state_dict(csd, strict=False)  # load
+        if verbose:
+            LOGGER.info(f'Transferred {len(csd)}/{len(self.model.state_dict())} items from pretrained weights')
 
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
@@ -1377,7 +1495,7 @@ class kP_DetectionModel(BaseModel):
 
 
 class ClassificationModel(BaseModel):
-    # YOLOv5 classification model
+    # YOLOv5and YOLOV8 classification model
     def __init__(self, cfg=None, model=None, nc=1000, cutoff=10):  # yaml, model, number of classes, cutoff index
         super().__init__()
         self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg)
@@ -1397,22 +1515,66 @@ class ClassificationModel(BaseModel):
         self.save = []
         self.nc = nc
 
-    def _from_yaml(self, cfg):
-        # Create a YOLOv5 classification model from a *.yaml file
-        self.model = None
+    
+    def _from_yaml(self, cfg, ch, nc, verbose):
+        self.yaml = cfg if isinstance(cfg, dict) else yaml_load(check_yaml(cfg), append_filename=True)  # cfg dict
+        # Define model
+        ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
+        if nc and nc != self.yaml['nc']:
+            LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
+            self.yaml['nc'] = nc  # override yaml value
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], verbose=verbose)  # model, savelist
+        self.names = {i: f'{i}' for i in range(self.yaml['nc'])}  # default names dict
+        self.info()
 
-def parse_model(d, ch):  # model_dict, input_channels(3)
-    LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
-    anchors, nc, gd, gw,act= d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    def load(self, weights):
+        model = weights["model"] if isinstance(weights, dict) else weights  # torchvision models are not dicts
+        csd = model.float().state_dict()
+        csd = intersect_dicts(csd, self.state_dict())  # intersect
+        self.load_state_dict(csd, strict=False)  # load
+
+    @staticmethod
+    def reshape_outputs(model, nc):
+        # Update a TorchVision classification model to class count 'n' if required
+        name, m = list((model.model if hasattr(model, 'model') else model).named_children())[-1]  # last module
+        if isinstance(m, Classify):  # YOLO Classify() head
+            if m.linear.out_features != nc:
+                m.linear = nn.Linear(m.linear.in_features, nc)
+        elif isinstance(m, nn.Linear):  # ResNet, EfficientNet
+            if m.out_features != nc:
+                setattr(model, name, nn.Linear(m.in_features, nc))
+        elif isinstance(m, nn.Sequential):
+            types = [type(x) for x in m]
+            if nn.Linear in types:
+                i = types.index(nn.Linear)  # nn.Linear index
+                if m[i].out_features != nc:
+                    m[i] = nn.Linear(m[i].in_features, nc)
+            elif nn.Conv2d in types:
+                i = types.index(nn.Conv2d)  # nn.Conv2d index
+                if m[i].out_channels != nc:
+                    m[i] = nn.Conv2d(m[i].in_channels, nc, m[i].kernel_size, m[i].stride, bias=m[i].bias is not None)
+
+
+def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
     nkpt=0
+    no=0
+   # anchors=None
+    if verbose:
+            LOGGER.info(f"\n{'':>3}{'from':>20}{'n':>3}{'params':>10}  {'module':<45}{'arguments':<30}")
+    nc, gd, gw,act=  d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    if 'anchors' in d.keys():
+        anchors=d['anchors']
+        na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
+        no = na * (nc + 5 + 2*nkpt)   # number of outputs = anchors * (classes + 5)
+    else:
+        print('V8_anchor-free!')  
+        no=nc
     if 'nkpt' in  d.keys():
        nkpt=d['nkpt']  
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5 + 2*nkpt)   # number of outputs = anchors * (classes + 5)
-
+    
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         args_dict = {}
@@ -1423,7 +1585,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in {nn.Conv2d, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,CBAM,ResBlock_CBAM,DownC,Stem,
+        if m in {nn.Conv2d,C2f,C1, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,ResBlock_CBAM,CBAM,DownC,Stem,
                  CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                   RepConv, RepConv_OREPA,RepBottleneck, RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC,  
                  Res, ResCSPA, ResCSPB, ResCSPC, 
@@ -1438,7 +1600,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR,CTR3,C3Ghost, C3x, SPPCSPC, GhostSPPCSPC, 
+            if m in {BottleneckCSP,C2f,C1, C3,C3TR,CTR3,C3Ghost, C3x, SPPCSPC, GhostSPPCSPC, 
                      BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                      RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC, 
                      ResCSPA, ResCSPB, ResCSPC, 
@@ -1465,18 +1627,20 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f[0]]
         elif m is Foldcut:
             c2 = ch[f] // 2    
-        elif m in {Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment}:    
+        elif m in {V8_Detect,V8_Segment,Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment}:    
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)   
+            if m in{V8_Segment}:
+                args[2]=make_divisible(args[2] * gw, 8)
             if m in {Segment, ISegment, IRSegment}:
-                args[3] = make_divisible(args[3] * gw, 8)
+                args[3] = make_divisible(args[3] * gw, 8)    
             if 'dw_conv_kpt' in d.keys():
                 args_dict = {"dw_conv_kpt" : d['dw_conv_kpt']}    
         elif m is ReOrg:
             c2 = ch[f] * 4
         elif m in [Merge]:
-            c2 = args[0]            
+            c2 = args[0]     
         elif m in [MT]:
             if len(args) == 3:
                 args.append(False)
@@ -1492,14 +1656,15 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f]
 
         if 'dw_conv_kpt' in d.keys():
-            #print("parse kpt model！！！！！！！！！！！！！")
+            
             m_ = nn.Sequential(*[m(*args, **args_dict) for _ in range(n)]) if n > 1 else m(*args, **args_dict)  # module
         else:
             m_ = nn.Sequential(*[m(*args) for _ in range(n)]) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace('__main__.', '')  # module type
-        np = sum([x.numel() for x in m_.parameters()])  # number params
-        m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
-        LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
+        m_.np = sum(x.numel() for x in m_.parameters())  # number params
+        m_.i, m_.f, m_.type = i, f, t  # attach index, 'from' index, type, number params
+        if verbose:
+            LOGGER.info(f'{i:>3}{str(f):>20}{n_:>3}{m_.np:10.0f}  {t:<45}{str(args):<30}')  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
@@ -1507,7 +1672,51 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
     
+def guess_model_task(model):
+    """
+    Guess the task of a PyTorch model from its architecture or configuration.
+    Args:
+        model (nn.Module) or (dict): PyTorch model or model configuration in YAML format.
+    Returns:
+        str: Task of the model ('detect', 'segment', 'classify').
+    Raises:
+        SyntaxError: If the task of the model could not be determined.
+    """
+    cfg = None
+    if isinstance(model, dict):
+        cfg = model
+    elif isinstance(model, nn.Module):  # PyTorch model
+        for x in 'model.args', 'model.model.args', 'model.model.model.args':
+            with contextlib.suppress(Exception):
+                return eval(x)['task']
+        for x in 'model.yaml', 'model.model.yaml', 'model.model.model.yaml':
+            with contextlib.suppress(Exception):
+                cfg = eval(x)
+                break
 
+    # Guess from YAML dictionary
+    if cfg:
+        m = cfg["head"][-1][-2].lower()  # output module name
+        if m in ["classify", "classifier", "cls", "fc"]:
+            return "classify"
+        if m in ["detect"]:
+            return "detect"
+        if m in ["segment"]:
+            return "segment"
+
+    # Guess from PyTorch model
+    if isinstance(model, nn.Module):
+        for m in model.modules():
+            if isinstance(m, Detect):
+                return "detect"
+            elif isinstance(m, Segment):
+                return "segment"
+            elif isinstance(m, Classify):
+                return "classify"
+
+    # Unable to determine task from model
+    raise SyntaxError("YOLO is unable to automatically guess model task. Explicitly define task for your model, "
+                      "i.e. 'task=detect', 'task=segment' or 'task=classify'.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

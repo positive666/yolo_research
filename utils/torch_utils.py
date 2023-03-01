@@ -572,3 +572,23 @@ class TracedModel(nn.Module):
         out = self.model(x)
         out = self.detect_layer(out)
         return 
+def get_num_params(model):
+    return sum(x.numel() for x in model.parameters())
+
+
+def get_num_gradients(model):
+    return sum(x.numel() for x in model.parameters() if x.requires_grad)
+
+
+def get_flops(model, imgsz=640):
+    try:
+        model = de_parallel(model)
+        p = next(model.parameters())
+        stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32  # max stride
+        im = torch.empty((1, p.shape[1], stride, stride), device=p.device)  # input image in BCHW format
+        flops = thop.profile(deepcopy(model), inputs=(im,), verbose=False)[0] / 1E9 * 2  # stride GFLOPs
+        imgsz = imgsz if isinstance(imgsz, list) else [imgsz, imgsz]  # expand if int/float
+        flops = flops * imgsz[0] / stride * imgsz[1] / stride  # 640x640 GFLOPs
+        return flops
+    except Exception:
+        return 0

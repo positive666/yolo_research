@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLOv5 🚀 by Ultralytics, GPL-3.0 licenseorg
 """
 Experimental modules
 """
@@ -10,8 +10,12 @@ import torch.nn as nn
 
 from models.common import Conv
 from utils.downloads import attempt_download
+from utils.general import check_requirements,check_yaml
+from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
+import logging
 
-
+LOGGER = logging.getLogger("yolo_research")
+           
 class Sum(nn.Module):
     # Weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, n, weight=False):  # n: number of inputs
@@ -70,24 +74,53 @@ class Ensemble(nn.ModuleList):
         y = torch.cat(y, 1)  # nms ensemble
         return y, None  # inference, train output
 
+def torch_safe_load(weight):
+    """
+    This function attempts to load a PyTorch model with the torch.load() function. If a ModuleNotFoundError is raised, it
+    catches the error, logs a warning message, and attempts to install the missing module via the check_requirements()
+    function. After installation, the function again attempts to load the model using torch.load().
+    Args:
+        weight (str): The file path of the PyTorch model.
+    Returns:
+        The loaded PyTorch model.
+    """
+
+    file = attempt_download(weight)  # search online if missing locally
+    print("file:",file)
+    try:
+        return torch.load(file, map_location='cpu')  # load
+    except ModuleNotFoundError as e:
+        if e.name == 'omegaconf':  # e.name is missing module name
+            LOGGER.warning(f"WARNING ⚠️ {weight} requires {e.name}, which is not in ultralytics requirements."
+                           f"\nAutoInstall will run now for {e.name} but this feature will be removed in the future."
+                           f"\nRecommend fixes are to train a new model using updated ultraltyics package or to "
+                           f"download updated models from https://github.com/ultralytics/assets/releases/tag/v0.0.0")
+        check_requirements(e.name)  # install missing module
+        return torch.load(file, map_location='cpu')  # load
+
+
 
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
-    from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IBin,Kpt_Detect,IKeypoint,Segment
+    from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IBin,Kpt_Detect,IKeypoint,Segment,V8_Detect,V8_Segment
 
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
-        ckpt = torch.load(attempt_download(w), map_location='cpu')  # load
+        ckpt = torch_safe_load(w)  # load ckpt
+        args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
         ckpt = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
+        ckpt.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
+        ckpt.pt_path = weights  # attach *.pt file path to model
+        if not hasattr(ckpt, 'stride'):
+            ckpt.stride = torch.tensor([32.])
         model.append(ckpt.fuse().eval() if fuse else ckpt.eval())  # fused or un-fused model in eval mode
 
     # Compatibility updates
     for m in model.modules():
         t = type(m)
-        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU,  Model):
+        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU,  Model,V8_Detect,V8_Segment):
             m.inplace = inplace  # torch 1.7.0 compatibility
             if isinstance(t, (Detect,Decoupled_Detect,Kpt_Detect,IKeypoint, ASFF_Detect,IDetect,Segment,IBin, IAuxDetect,Segment,IBin, IAuxDetect))  and not isinstance(m.anchor_grid, list):
-            #if t is Detect and not isinstance(m.anchor_grid, list):
                 delattr(m, 'anchor_grid')
                 setattr(m, 'anchor_grid', [torch.zeros(1)] * m.nl)
         elif t is Conv:
@@ -103,3 +136,66 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
     model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride  # max stride
     assert all(model[0].nc == m.nc for m in model), f'Models have different class counts: {[m.nc for m in model]}'
     return model  # return ensemble
+
+def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
+    # Loads a single model weights
+    from models.yolo import V8_Detect,V8_Segment
+    ckpt = torch_safe_load(weight)  # load ckpt
+    args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
+    model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
+
+    # Model compatibility updates
+    model.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
+    model.pt_path = weight  # attach *.pt file path to model
+    if not hasattr(model, 'stride'):
+        model.stride = torch.tensor([32.])
+
+    model = model.fuse().eval() if fuse and hasattr(model, 'fuse') else model.eval()  # model in eval mode
+
+    # Module compatibility updates
+    for m in model.modules():
+        t = type(m)
+        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU,V8_Detect, V8_Segment):
+            m.inplace = inplace  # torch 1.7.0 compatibility
+        elif t is nn.Upsample and not hasattr(m, 'recompute_scale_factor'):
+            m.recompute_scale_factor = None  # torch 1.11.0 compatibility
+
+    # Return model and ckpt
+    return model, ckpt
+def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
+    # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
+
+    model = Ensemble()
+    for w in weights if isinstance(weights, list) else [weights]:
+        ckpt = torch_safe_load(w)  # load ckpt
+        args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
+        ckpt = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
+
+        # Model compatibility updates
+        ckpt.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
+        ckpt.pt_path = weights  # attach *.pt file path to model
+        if not hasattr(ckpt, 'stride'):
+            ckpt.stride = torch.tensor([32.])
+
+        # Append
+        model.append(ckpt.fuse().eval() if fuse and hasattr(ckpt, 'fuse') else ckpt.eval())  # model in eval mode
+
+    # Module compatibility updates
+    for m in model.modules():
+        t = type(m)
+        if t in (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU, Detect, Segment):
+            m.inplace = inplace  # torch 1.7.0 compatibility
+        elif t is nn.Upsample and not hasattr(m, 'recompute_scale_factor'):
+            m.recompute_scale_factor = None  # torch 1.11.0 compatibility
+
+    # Return model
+    if len(model) == 1:
+        return model[-1]
+
+    # Return ensemble
+    print(f'Ensemble created with {weights}\n')
+    for k in 'names', 'nc', 'yaml':
+        setattr(model, k, getattr(model[0], k))
+    model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride  # max stride
+    assert all(model[0].nc == m.nc for m in model), f'Models have different class counts: {[m.nc for m in model]}'
+    return model

@@ -27,14 +27,13 @@ from typing import Optional
 from zipfile import ZipFile
 
 import cv2
-import IPython
 import numpy as np
 import pandas as pd
 import pkg_resources as pkg
 import torch
 import torchvision
 import yaml
-
+from types import SimpleNamespace
 from utils import TryExcept, emojis
 from torch.nn import functional as F
 from utils.downloads import gsutil_getsize
@@ -46,11 +45,12 @@ RANK = int(os.getenv('RANK', -1))
 
 # Settings
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
-DATASETS_DIR = Path(os.getenv('YOLOv5_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
-AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
-VERBOSE = str(os.getenv('YOLOv5_VERBOSE', True)).lower() == 'true'  # global verbose mode
+DATASETS_DIR = Path(os.getenv('YOLOv_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
+AUTOINSTALL = str(os.getenv('YOLOv_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
+VERBOSE = str(os.getenv('YOLO_Research_VERBOSE', True)).lower() == 'true'  # global verbose mode
 TQDM_BAR_FORMAT = '{l_bar}{bar:10}| {n_fmt}/{total_fmt} {elapsed}'  # tqdm bar format   
 FONT = 'Arial.ttf'  # https://ultralytics.com/assets/Arial.ttf
+#DEFAULT_CFG_PATH = ROOT / "yolo/cfg/default.yaml"
 
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
 np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format})  # format short g, %precision=5
@@ -58,6 +58,8 @@ pd.options.display.max_columns = 10
 cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with PyTorch DataLoader)
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['OMP_NUM_THREADS'] = '1' if platform.system() == 'darwin' else str(NUM_THREADS)
+
+
 
 
 def is_kaggle():
@@ -93,7 +95,7 @@ def set_logging(name=None, verbose=VERBOSE):
     handler.setLevel(level)
     log.addHandler(handler)
     
-LOGGING_NAME="yolo_research"
+LOGGING_NAME="Yolo_research"
 
 def set_logging(name=LOGGING_NAME, verbose=True):
     # sets up logging for the given name
@@ -160,7 +162,7 @@ class Profile(contextlib.ContextDecorator):
 
 
 class Timeout(contextlib.ContextDecorator):
-    # Usage: @Timeout(seconds) decorator or 'with Timeout(seconds):' context manager
+    # YOLOv5 Timeout class. Usage: @Timeout(seconds) decorator or 'with Timeout(seconds):' context manager
     def __init__(self, seconds, *, timeout_msg='', suppress_timeout_errors=True):
         self.seconds = int(seconds)
         self.timeout_message = timeout_msg
@@ -278,11 +280,20 @@ def is_docker():
 
 def is_colab():
     # Is environment a Google Colab instance?
-    return 'COLAB_GPU' in os.environ 
-        
-def is_notebook():
-    ipython_type=str(type(IPython.get_ipython()))
-    return 'colab' in ipython_type or 'zmpshell' in ipython_type
+    return 'google.colab' in sys.modules
+
+
+def is_jupyter():
+    """
+    Check if the current script is running inside a Jupyter Notebook.
+    Verified on Colab, Jupyterlab, Kaggle, Paperspace.
+    Returns:
+        bool: True if running inside a Jupyter Notebook, False otherwise.
+    """
+    with contextlib.suppress(Exception):
+        from IPython import get_ipython
+        return get_ipython() is not None
+    return False
     
 def is_pip():
     # Is file in a pip package?
@@ -339,6 +350,28 @@ def check_online():
     return run_once() or run_once()  # check twice to increase robustness to intermittent connectivity issues
 
 
+def check_yolo(verbose=True):
+    from utils.torch_utils import select_device
+    import shutil
+    import psutil
+    from IPython import display
+    if is_colab():
+        shutil.rmtree('sample_data', ignore_errors=True)  # remove colab /sample_data directory
+
+    if verbose:
+        # System info
+        gib = 1 << 30  # bytes per GiB
+        ram = psutil.virtual_memory().total
+        total, used, free = shutil.disk_usage("/")
+        display.clear_output()
+        s = f'({os.cpu_count()} CPUs, {ram / gib:.1f} GB RAM, {(total - free) / gib:.1f}/{total / gib:.1f} GB disk)'
+    else:
+        s = ''
+
+    select_device(newline=False)
+    LOGGER.info(f'Setup complete ✅ {s}')
+
+        
 def git_describe(path=ROOT):  # path must be a directory
     # Return human-readable git description, i.e. v5.0-5-g3e25f1e https://git-scm.com/docs/git-describe
     try:
@@ -402,11 +435,11 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
     # Check version vs. required version
     current, minimum = (pkg.parse_version(x) for x in (current, minimum))
     result = (current == minimum) if pinned else (current >= minimum)  # bool
-    s = f'WARNING ⚠️ {name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
+    warning_message = f'WARNING ⚠️ {name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
     if hard:
-        assert result, emojis(s)  # assert min requirements met
+        assert result, emojis(warning_message)  # assert min requirements met
     if verbose and not result:
-        LOGGER.warning(s)
+        LOGGER.warning(warning_message)
     return result
 
 
@@ -463,7 +496,7 @@ def check_imshow(warn=False):
     # Check if environment supports image displays
     try:
         assert not is_docker(), 'cv2.imshow() is disabled in Docker environments'
-        assert not is_notebook(), 'cv2.imshow() is disabled in Google Colab environments'
+        assert not is_jupyter(), 'cv2.imshow() is disabled in Google Colab environments'
         cv2.imshow('test', np.zeros((1, 1, 3)))
         cv2.waitKey(1)
         cv2.destroyAllWindows()
@@ -525,6 +558,14 @@ def check_font(font=FONT, progress=False):
         LOGGER.info(f'Downloading {url} to {file}...')
         torch.hub.download_url_to_file(url, str(file), progress=progress)
 
+def check_class_names(names):
+    # Check class names. Map imagenet class codes to human-readable names if required. Convert lists to dicts.
+    if isinstance(names, list):  # names is a list
+        names = dict(enumerate(names))  # convert to dict
+    if isinstance(names[0], str) and names[0].startswith('n0'):  # imagenet class codes, i.e. 'n01440764'
+        map = yaml_load(ROOT / 'yolo/data/datasets/ImageNet.yaml')['map']  # human-readable names
+        names = {k: map[v] for k, v in names.items()}
+    return names
 
 def check_dataset(data, autodownload=True):
     # Download, check and/or unzip dataset if not found locally
@@ -616,10 +657,28 @@ def check_amp(model):
         LOGGER.warning(f'{prefix}checks failed ❌, disabling Automatic Mixed Precision. See {help_url}')
         return False
 
-def yaml_load(file='data.yaml'):
-    # Single-line safe yaml loading
-    with open(file, errors='ignore') as f:
-        return yaml.safe_load(f)
+# def yaml_load(file='data.yaml'):
+#     # Single-line safe yaml loading
+#     with open(file, errors='ignore') as f:
+#         return yaml.safe_load(f)
+
+def yaml_load(file='data.yaml', append_filename=False):
+    """
+    Load YAML data from a file.
+
+    Args:
+        file (str, optional): File name. Default is 'data.yaml'.
+        append_filename (bool): Add the YAML filename to the YAML dictionary. Default is False.
+
+    Returns:
+        dict: YAML data and file name.
+    """
+    with open(file, errors='ignore', encoding='utf-8') as f:
+        # Add YAML filename to dict and return
+        s = f.read()  # string
+        if not s.isprintable():  # remove special characters
+            s = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\x85\xA0-\uD7FF\uE000-\uFFFD\U00010000-\U0010ffff]+', '', s)
+        return {**yaml.safe_load(s), 'yaml_file': str(file)} if append_filename else yaml.safe_load(s)
 
 
 def yaml_save(file='data.yaml', data={}):
@@ -937,6 +996,175 @@ def clip_segments(boxes, shape):
         boxes[:, 0] = boxes[:, 0].clip(0, shape[1])  # x
         boxes[:, 1] = boxes[:, 1].clip(0, shape[0])  # y
 
+def scale_image(im1_shape, masks, im0_shape, ratio_pad=None):
+    """
+    Takes a mask, and resizes it to the original image size
+    Args:
+      im1_shape (tuple): model input shape, [h, w]
+      masks (torch.Tensor): [h, w, num]
+      im0_shape (tuple): the original image shape
+      ratio_pad (tuple): the ratio of the padding to the original image.
+    Returns:
+      masks (torch.Tensor): The masks that are being returned.
+    """
+    # Rescale coordinates (xyxy) from im1_shape to im0_shape
+    if ratio_pad is None:  # calculate from im0_shape
+        gain = min(im1_shape[0] / im0_shape[0], im1_shape[1] / im0_shape[1])  # gain  = old / new
+        pad = (im1_shape[1] - im0_shape[1] * gain) / 2, (im1_shape[0] - im0_shape[0] * gain) / 2  # wh padding
+    else:
+        pad = ratio_pad[1]
+    top, left = int(pad[1]), int(pad[0])  # y, x
+    bottom, right = int(im1_shape[0] - pad[1]), int(im1_shape[1] - pad[0])
+
+    if len(masks.shape) < 2:
+        raise ValueError(f'"len of masks shape" should be 2 or 3, but got {len(masks.shape)}')
+    masks = masks[top:bottom, left:right]
+    # masks = masks.permute(2, 0, 1).contiguous()
+    # masks = F.interpolate(masks[None], im0_shape[:2], mode='bilinear', align_corners=False)[0]
+    # masks = masks.permute(1, 2, 0).contiguous()
+    masks = cv2.resize(masks, (im0_shape[1], im0_shape[0]))
+
+    if len(masks.shape) == 2:
+        masks = masks[:, :, None]
+    return masks
+
+#v8 nms
+def yolov8_non_max_suppression(
+        prediction,
+        conf_thres=0.25,
+        iou_thres=0.45,
+        classes=None,
+        agnostic=False,
+        multi_label=False,
+        labels=(),
+        max_det=300,
+        nm=0,  # number of masks
+):
+    """
+    Perform non-maximum suppression (NMS) on a set of boxes, with support for masks and multiple labels per box.
+    Arguments:
+        prediction (torch.Tensor): A tensor of shape (batch_size, num_boxes, num_classes + 4 + num_masks)
+            containing the predicted boxes, classes, and masks. The tensor should be in the format
+            output by a model, such as YOLO.
+        conf_thres (float): The confidence threshold below which boxes will be filtered out.
+            Valid values are between 0.0 and 1.0.
+        iou_thres (float): The IoU threshold below which boxes will be filtered out during NMS.
+            Valid values are between 0.0 and 1.0.
+        classes (List[int]): A list of class indices to consider. If None, all classes will be considered.
+        agnostic (bool): If True, the model is agnostic to the number of classes, and all
+            classes will be considered as one.
+        multi_label (bool): If True, each box may have multiple labels.
+        labels (List[List[Union[int, float, torch.Tensor]]]): A list of lists, where each inner
+            list contains the apriori labels for a given image. The list should be in the format
+            output by a dataloader, with each label being a tuple of (class_index, x1, y1, x2, y2).
+        max_det (int): The maximum number of boxes to keep after NMS.
+        nm (int): The number of masks output by the model.
+    Returns:
+        (List[torch.Tensor]): A list of length batch_size, where each element is a tensor of
+            shape (num_boxes, 6 + num_masks) containing the kept boxes, with columns
+            (x1, y1, x2, y2, confidence, class, mask1, mask2, ...).
+    """
+
+    # Checks
+    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
+    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+    if isinstance(prediction, (list, tuple)):  # YOLOv8 model in validation model, output = (inference_out, loss_out)
+        prediction = prediction[0]  # select only inference output
+
+    device = prediction.device
+    mps = 'mps' in device.type  # Apple MPS
+    if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
+        prediction = prediction.cpu()
+    bs = prediction.shape[0]  # batch size
+    nc = prediction.shape[1] - nm - 4  # number of classes
+    mi = 4 + nc  # mask start index
+    xc = prediction[:, 4:mi].amax(1) > conf_thres  # candidates
+
+    # Settings
+    # min_wh = 2  # (pixels) minimum box width and height
+    max_wh = 7680  # (pixels) maximum box width and height
+    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
+    time_limit = 0.5 + 0.05 * bs  # seconds to quit after
+    redundant = True  # require redundant detections
+    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
+    merge = False  # use merge-NMS
+
+    t = time.time()
+    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    for xi, x in enumerate(prediction):  # image index, image inference
+        # Apply constraints
+        # x[((x[:, 2:4] < min_wh) | (x[:, 2:4] > max_wh)).any(1), 4] = 0  # width-height
+        x = x.transpose(0, -1)[xc[xi]]  # confidence
+
+        # Cat apriori labels if autolabelling
+        if labels and len(labels[xi]):
+            lb = labels[xi]
+            v = torch.zeros((len(lb), nc + nm + 5), device=x.device)
+            v[:, :4] = lb[:, 1:5]  # box
+            v[range(len(lb)), lb[:, 0].long() + 4] = 1.0  # cls
+            x = torch.cat((x, v), 0)
+
+        # If none remain process next image
+        if not x.shape[0]:
+            continue
+
+        # Detections matrix nx6 (xyxy, conf, cls)
+        box, cls, mask = x.split((4, nc, nm), 1)
+        box = xywh2xyxy(box)  # center_x, center_y, width, height) to (x1, y1, x2, y2)
+        if multi_label:
+            i, j = (cls > conf_thres).nonzero(as_tuple=False).T
+            x = torch.cat((box[i], x[i, 4 + j, None], j[:, None].float(), mask[i]), 1)
+        else:  # best class only
+            conf, j = cls.max(1, keepdim=True)
+            x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+
+        # Filter by class
+        if classes is not None:
+            x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+        # Check shape
+        n = x.shape[0]  # number of boxes
+        if not n:  # no boxes
+            continue
+        x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
+
+        # Batched NMS
+        c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
+        boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
+        i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        i = i[:max_det]  # limit detections
+        if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
+            # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
+            iou = box_iou(boxes[i], boxes) > iou_thres  # iou matrix
+            weights = iou * scores[None]  # box weights
+            x[i, :4] = torch.mm(weights, x[:, :4]).float() / weights.sum(1, keepdim=True)  # merged boxes
+            if redundant:
+                i = i[iou.sum(1) > 1]  # require redundancy
+
+        output[xi] = x[i]
+        if mps:
+            output[xi] = output[xi].to(device)
+        if (time.time() - t) > time_limit:
+            LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
+            break  # time limit exceeded
+    return output
+
+
+def clip_boxes(boxes, shape):
+    """
+    It takes a list of bounding boxes and a shape (height, width) and clips the bounding boxes to the
+    shape
+    Args:
+      boxes (torch.Tensor): the bounding boxes to clip
+      shape (tuple): the shape of the image
+    """
+    if isinstance(boxes, torch.Tensor):  # faster individually
+        boxes[..., 0].clamp_(0, shape[1])  # x1
+        boxes[..., 1].clamp_(0, shape[0])  # y1
+        boxes[..., 2].clamp_(0, shape[1])  # x2
+        boxes[..., 3].clamp_(0, shape[0])  # y2
+    else:  # np.array (faster grouped)
+        boxes[..., [0, 2]] = boxes[..., [0, 2]].clip(0, shape[1])  # x1, x2
+        boxes[..., [1, 3]] = boxes[..., [1, 3]].clip(0, shape[0])  # y1, y2
 
 def non_max_suppression(prediction,
                         conf_thres=0.25,

@@ -373,3 +373,209 @@ def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confi
     ax.set_title(f'{ylabel}-Confidence Curve')
     fig.savefig(save_dir, dpi=250)
     plt.close(fig)
+
+class Metric:
+
+    def __init__(self) -> None:
+        self.p = []  # (nc, )
+        self.r = []  # (nc, )
+        self.f1 = []  # (nc, )
+        self.all_ap = []  # (nc, 10)
+        self.ap_class_index = []  # (nc, )
+
+    @property
+    def ap50(self):
+        """AP@0.5 of all classes.
+        Return:
+            (nc, ) or [].
+        """
+        return self.all_ap[:, 0] if len(self.all_ap) else []
+
+    @property
+    def ap(self):
+        """AP@0.5:0.95
+        Return:
+            (nc, ) or [].
+        """
+        return self.all_ap.mean(1) if len(self.all_ap) else []
+
+    @property
+    def mp(self):
+        """mean precision of all classes.
+        Return:
+            float.
+        """
+        return self.p.mean() if len(self.p) else 0.0
+
+    @property
+    def mr(self):
+        """mean recall of all classes.
+        Return:
+            float.
+        """
+        return self.r.mean() if len(self.r) else 0.0
+
+    @property
+    def map50(self):
+        """Mean AP@0.5 of all classes.
+        Return:
+            float.
+        """
+        return self.all_ap[:, 0].mean() if len(self.all_ap) else 0.0
+
+    @property
+    def map(self):
+        """Mean AP@0.5:0.95 of all classes.
+        Return:
+            float.
+        """
+        return self.all_ap.mean() if len(self.all_ap) else 0.0
+
+    def mean_results(self):
+        """Mean of results, return mp, mr, map50, map"""
+        return [self.mp, self.mr, self.map50, self.map]
+
+    def class_result(self, i):
+        """class-aware result, return p[i], r[i], ap50[i], ap[i]"""
+        return self.p[i], self.r[i], self.ap50[i], self.ap[i]
+
+    def get_maps(self, nc):
+        maps = np.zeros(nc) + self.map
+        for i, c in enumerate(self.ap_class_index):
+            maps[c] = self.ap[i]
+        return maps
+
+    def fitness(self):
+        # Model fitness as a weighted combination of metrics
+        w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
+        return (np.array(self.mean_results()) * w).sum()
+
+    def update(self, results):
+        """
+        Args:
+            results: tuple(p, r, ap, f1, ap_class)
+        """
+        self.p, self.r, self.f1, self.all_ap, self.ap_class_index = results
+
+
+class DetMetrics:
+
+    def __init__(self, save_dir=Path("."), plot=False, names=()) -> None:
+        self.save_dir = save_dir
+        self.plot = plot
+        self.names = names
+        self.metric = Metric()
+
+    def process(self, tp, conf, pred_cls, target_cls):
+        results = ap_per_class(tp, conf, pred_cls, target_cls, plot=self.plot, save_dir=self.save_dir,
+                               names=self.names)[2:]
+        self.metric.update(results)
+
+    @property
+    def keys(self):
+        return ["metrics/precision(B)", "metrics/recall(B)", "metrics/mAP50(B)", "metrics/mAP50-95(B)"]
+
+    def mean_results(self):
+        return self.metric.mean_results()
+
+    def class_result(self, i):
+        return self.metric.class_result(i)
+
+    def get_maps(self, nc):
+        return self.metric.get_maps(nc)
+
+    @property
+    def fitness(self):
+        return self.metric.fitness()
+
+    @property
+    def ap_class_index(self):
+        return self.metric.ap_class_index
+
+    @property
+    def results_dict(self):
+        return dict(zip(self.keys + ["fitness"], self.mean_results() + [self.fitness]))
+
+
+class SegmentMetrics:
+
+    def __init__(self, save_dir=Path("."), plot=False, names=()) -> None:
+        self.save_dir = save_dir
+        self.plot = plot
+        self.names = names
+        self.metric_box = Metric()
+        self.metric_mask = Metric()
+
+    def process(self, tp_m, tp_b, conf, pred_cls, target_cls):
+        results_mask = ap_per_class(tp_m,
+                                    conf,
+                                    pred_cls,
+                                    target_cls,
+                                    plot=self.plot,
+                                    save_dir=self.save_dir,
+                                    names=self.names,
+                                    prefix="Mask")[2:]
+        self.metric_mask.update(results_mask)
+        results_box = ap_per_class(tp_b,
+                                   conf,
+                                   pred_cls,
+                                   target_cls,
+                                   plot=self.plot,
+                                   save_dir=self.save_dir,
+                                   names=self.names,
+                                   prefix="Box")[2:]
+        self.metric_box.update(results_box)
+
+    @property
+    def keys(self):
+        return [
+            "metrics/precision(B)", "metrics/recall(B)", "metrics/mAP50(B)", "metrics/mAP50-95(B)",
+            "metrics/precision(M)", "metrics/recall(M)", "metrics/mAP50(M)", "metrics/mAP50-95(M)"]
+
+    def mean_results(self):
+        return self.metric_box.mean_results() + self.metric_mask.mean_results()
+
+    def class_result(self, i):
+        return self.metric_box.class_result(i) + self.metric_mask.class_result(i)
+
+    def get_maps(self, nc):
+        return self.metric_box.get_maps(nc) + self.metric_mask.get_maps(nc)
+
+    @property
+    def fitness(self):
+        return self.metric_mask.fitness() + self.metric_box.fitness()
+
+    @property
+    def ap_class_index(self):
+        # boxes and masks have the same ap_class_index
+        return self.metric_box.ap_class_index
+
+    @property
+    def results_dict(self):
+        return dict(zip(self.keys + ["fitness"], self.mean_results() + [self.fitness]))
+
+
+class ClassifyMetrics:
+
+    def __init__(self) -> None:
+        self.top1 = 0
+        self.top5 = 0
+
+    def process(self, targets, pred):
+        # target classes and predicted classes
+        pred, targets = torch.cat(pred), torch.cat(targets)
+        correct = (targets[:, None] == pred).float()
+        acc = torch.stack((correct[:, 0], correct.max(1).values), dim=1)  # (top1, top5) accuracy
+        self.top1, self.top5 = acc.mean(0).tolist()
+
+    @property
+    def fitness(self):
+        return self.top5
+
+    @property
+    def results_dict(self):
+        return dict(zip(self.keys + ["fitness"], [self.top1, self.top5, self.fitness]))
+
+    @property
+    def keys(self):
+        return ["metrics/accuracy_top1", "metrics/accuracy_top5"]

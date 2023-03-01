@@ -33,6 +33,7 @@ from utils.augmentations import (Albumentations, augment_hsv, classify_albumenta
                                  letterbox, mixup, random_perspective,pastein,sample_segments)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS,TQDM_BAR_FORMAT, check_dataset, check_requirements, check_yaml, clean_str,
                            colorstr,cv2, is_colab, is_kaggle, segments2boxes, unzip_file,xyn2xy, xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
+#from yolo.utils.ops import (xyn2xy, xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
 
 # Parameters
@@ -115,7 +116,9 @@ def create_dataloader(path,
                       quad=False,
                       prefix='',
                       shuffle=False,
-                      seed=0):
+                      seed=0,
+                      load_v8=False,
+                      ):
     if rect and shuffle:
         LOGGER.warning('WARNING: --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -141,13 +144,16 @@ def create_dataloader(path,
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + seed+ RANK)
+    #collate_fuction=None
+   
+    collate_fuction=LoadImagesAndLabels.collate_fn_v8 if load_v8 else LoadImagesAndLabels.collate_fn
     return loader(dataset,
                   batch_size=batch_size,
                   shuffle=shuffle and sampler is None,
                   num_workers=nw,
                   sampler=sampler,
                   pin_memory=PIN_MEMORY,
-                  collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn, 
+                  collate_fn=LoadImagesAndLabels.collate_fn4 if quad else collate_fuction , 
                   worker_init_fn=seed_worker,
                   generator=generator), dataset
 
@@ -1020,7 +1026,23 @@ class LoadImagesAndLabels(Dataset):
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
         return torch.stack(im, 0), torch.cat(label, 0), path, shapes
-
+    
+    @staticmethod
+    def collate_fn_v8(batch):
+        # YOLOv8 collate function, outputs dict
+        im, label, path, shapes = zip(*batch)  # transposed
+        for i, lb in enumerate(label):
+            lb[:, 0] = i  # add target image index for build_targets()
+        batch_idx, cls, bboxes = torch.cat(label, 0).split((1, 1, 4), dim=1)
+        return {
+            'ori_shape': tuple((x[0] if x else None) for x in shapes),
+            'ratio_pad': tuple((x[1] if x else None) for x in shapes),
+            'im_file': path,
+            'img': torch.stack(im, 0),
+            'cls': cls,
+            'bboxes': bboxes,
+            'batch_idx': batch_idx.view(-1)}
+        
     @staticmethod
     def collate_fn4(batch):
         img, label, path, shapes = zip(*batch)  # transposed
@@ -1046,6 +1068,7 @@ class LoadImagesAndLabels(Dataset):
             lb[:, 0] = i  # add target image index for build_targets()
 
         return torch.stack(im4, 0), torch.cat(label4, 0), path4, shapes4
+
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
@@ -1659,7 +1682,22 @@ class LoadImagesAndLabels_Kpt(Dataset):  # for training/testing
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
         return torch.stack(img, 0), torch.cat(label, 0), path, shapes
-
+    @staticmethod
+    def collate_fn_v8(batch):
+        # YOLOv8 collate function, outputs dict
+        im, label, path, shapes = zip(*batch)  # transposed
+        for i, lb in enumerate(label):
+            lb[:, 0] = i  # add target image index for build_targets()
+        batch_idx, cls, bboxes = torch.cat(label, 0).split((1, 1, 4), dim=1)
+        return {
+            'ori_shape': tuple((x[0] if x else None) for x in shapes),
+            'ratio_pad': tuple((x[1] if x else None) for x in shapes),
+            'im_file': path,
+            'img': torch.stack(im, 0),
+            'cls': cls,
+            'bboxes': bboxes,
+            'batch_idx': batch_idx.view(-1)}
+        
     @staticmethod
     def collate_fn4(batch):
         img, label, path, shapes = zip(*batch)  # transposed
