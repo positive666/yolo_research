@@ -1247,7 +1247,12 @@ class Detections:
 
             im = Image.fromarray(im.astype(np.uint8)) if isinstance(im, np.ndarray) else im  # from np
             if show:
-                display(im) if is_notebook() else im.show(self.files[i])  # show
+                if is_jupyter():
+                    from IPython.display import display
+                    display(im)
+                else:
+                    im.show(self.files[i])    
+                    
             if save:
                 f = self.files[i]
                 im.save(save_dir / f)  # save
@@ -1322,7 +1327,7 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         x=self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
-        return x if self.traning else x.softmax(1)
+        return x if self.training else x.softmax(1)
 class ASFFV5(nn.Module):
     def __init__(self, level, multiplier=1, rfb=False, vis=False, act_cfg=True):
         """
