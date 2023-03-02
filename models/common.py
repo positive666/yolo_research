@@ -1321,7 +1321,7 @@ class Classify(nn.Module):
     def forward(self, x):
         if isinstance(x, list):
             x = torch.cat(x, 1)
-        x=self.liear(self.drop(self.pool(self.conv(x)).flatten(1)))
+        x=self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
         return x if self.traning else x.softmax(1)
 class ASFFV5(nn.Module):
     def __init__(self, level, multiplier=1, rfb=False, vis=False, act_cfg=True):
