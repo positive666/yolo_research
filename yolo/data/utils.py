@@ -14,10 +14,11 @@ import numpy as np
 import torch
 from PIL import ExifTags, Image, ImageOps
 
-from yolo.utils import DATASETS_DIR, LOGGER, ROOT, colorstr, emojis, yaml_load
+from yolo.utils import DATASETS_DIR, LOGGER, NUM_THREADS, ROOT, colorstr, emojis, yaml_load
 from yolo.utils.checks import check_file, check_font, is_ascii
-from utils.downloads import download, safe_download
-from yolo.utils.files import unzip_file
+from utils.downloads import download, safe_download, unzip_file
+from yolo.utils.ops import segments2boxes
+
 from yolo.utils.ops import segments2boxes
 
 HELP_URL = "See https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data"

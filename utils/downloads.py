@@ -13,7 +13,12 @@ from multiprocessing.pool import ThreadPool
 import requests
 import torch
 
+import contextlib
+from urllib import parse, request
+from zipfile import BadZipFile, ZipFile, is_zipfile
 
+
+from tqdm import tqdm
 
 GITHUB_ASSET_NAMES = [f'yolov8{size}{suffix}.pt' for size in 'nsmlx' for suffix in ('', '6', '-cls', '-seg')] + \
                      [f'yolov5{size}u.pt' for size in 'nsmlx'] + \
@@ -30,7 +35,20 @@ def is_url(url, check_online=True):
     except (AssertionError, urllib.request.HTTPError):
         return False
 
-
+def unzip_file(file, path=None, exclude=('.DS_Store', '__MACOSX')):
+    """
+    Unzip a *.zip file to path/, excluding files containing strings in exclude list
+    Replaces: ZipFile(file).extractall(path=path)
+    """
+    if not (Path(file).exists() and is_zipfile(file)):
+        raise BadZipFile(f"File '{file}' does not exist or is a bad zip file.")
+    if path is None:
+        path = Path(file).parent  # default path
+    with ZipFile(file) as zipObj:
+        for f in zipObj.namelist():  # list all archived filenames in the zip
+            if all(x not in f for x in exclude):
+                zipObj.extract(f, path=path)
+        return zipObj.namelist()[0]  # return unzip dir
 
 def gsutil_getsize(url=''):
     # gs://bucket/file size https://cloud.google.com/storage/docs/gsutil/commands/du
