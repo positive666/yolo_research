@@ -11,7 +11,6 @@ import torch.nn as nn
 from models.common import Conv
 from utils.downloads import attempt_download
 from utils.general import check_requirements,check_yaml
-from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
 import logging
 
 LOGGER = logging.getLogger("yolo_research")
@@ -140,6 +139,7 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
 def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     # Loads a single model weights
     from models.yolo import V8_Detect,V8_Segment
+    from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
     ckpt = torch_safe_load(weight)  # load ckpt
     args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
     model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
@@ -164,7 +164,7 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     return model, ckpt
 def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
-
+    from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
         ckpt = torch_safe_load(w)  # load ckpt

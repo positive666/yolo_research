@@ -69,7 +69,7 @@ from yolo.cfg import get_cfg
 from yolo.data.dataloaders.stream_loaders import LoadImages
 from yolo.data.utils import check_det_dataset
 from yolo.utils import DEFAULT_CFG, LOGGER, callbacks, colorstr, get_default_args, yaml_save
-from utils.general import check_img_size, check_requirements, check_version, check_yaml,Profile
+from utils.general import check_img_size, Profile, check_requirements, check_version, check_yaml
 from yolo.utils.files import file_size
 from utils.torch_utils import select_device, smart_inference_mode
 

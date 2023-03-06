@@ -10,7 +10,7 @@ import warnings
 from collections import OrderedDict, namedtuple
 from copy import copy
 from pathlib import Path
-
+from urllib.parse import urlparse
 import cv2
 import numpy as np
 import pandas as pd
@@ -22,13 +22,13 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
 from utils import TryExcept
+from utils.downloads import  is_url,attempt_download_asset
 from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr, increment_path,
                            is_jupyter,make_divisible,non_max_suppression, yolov8_non_max_suppression,scale_boxes, xywh2xyxy, xyxy2xywh,yaml_load)
 from utils.plots import Annotator, colors,save_one_box
-#from utios.ops import  non_max_suppression, scale_boxes, xywh2xyxy, xyxy2xywh
 from utils.torch_utils import copy_attr,smart_inference_mode
-
+#from yolo.utils.downloads import is_url,attempt_download_asset
 def autopad(k, p=None,d=1):  # kernel, padding
     # Pad to 'same' 
     if d > 1:
@@ -176,11 +176,15 @@ class DetectMultiBackend(nn.Module):
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
         nn_module=isinstance(weights,torch.nn.Module)
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle  = self.model_type(w)
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton = self.model_type(w)
         w = attempt_download(w)  # download if not local
-        fp16 &= pt or jit or onnx or engine  # FP16
+        fp16 &= pt or jit or onnx or engine  or nn_module # FP16
+        nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
+        model,metadata=None,None 
         stride = 32  # default stride
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
+        if not (pt or triton or nn_module):
+            w = attempt_download_asset(w)  # download if not local
         if nn_module:
             model = weights.to(device)
             model = model.fuse() if fuse else model
@@ -320,6 +324,8 @@ class DetectMultiBackend(nn.Module):
             predictor = pdi.create_predictor(config)
             input_handle = predictor.get_input_handle(predictor.get_input_names()[0])
             output_names = predictor.get_output_names()
+        elif triton:  # NVIDIA Triton Inference Server
+            LOGGER.info('Triton Inference Server not supported...')
         else:
             raise NotImplementedError(f'ERROR: {w} is not a supported format')
 
@@ -337,8 +343,9 @@ class DetectMultiBackend(nn.Module):
         b, ch, h, w = im.shape  # batch, channel, height, width
         if self.fp16 and im.dtype != torch.float16:
             im = im.half()  # to FP16
-
-        if self.pt:  # PyTorch
+        if self.nhwc:
+            im = im.permute(0, 2, 3, 1)  # torch BCHW to numpy BHWC shape(1,320,192,3)
+        if self.pt or self.nn_module:  # PyTorch
             y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)
         elif self.jit:  # TorchScript
             y = self.model(im)
@@ -364,7 +371,7 @@ class DetectMultiBackend(nn.Module):
             self.context.execute_v2(list(self.binding_addrs.values()))
             y = self.bindings['output'].data
         elif self.coreml:  # CoreML
-            im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
+            im = im.cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             im = Image.fromarray((im[0] * 255).astype('uint8'))
             # im = im.resize((192, 320), Image.ANTIALIAS)
             y = self.model.predict({'image': im})  # coordinates are xywh normalized
@@ -379,8 +386,10 @@ class DetectMultiBackend(nn.Module):
             self.input_handle.copy_from_cpu(im)
             self.predictor.run()
             y = [self.predictor.get_output_handle(x).copy_to_cpu() for x in self.output_names]
+        elif self.triton:  # NVIDIA Triton Inference Server
+            y = self.model(im)    
         else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
-            im = im.permute(0, 2, 3, 1).cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
+            im = im.cpu().numpy()  # torch BCHW to numpy BHWC shape(1,320,192,3)
             if self.saved_model:  # SavedModel
                 y = (self.model(im, training=False) if self.keras else self.model(im)).numpy()
             elif self.pb:  # GraphDef
@@ -405,10 +414,27 @@ class DetectMultiBackend(nn.Module):
             return self.from_numpy(y)
 
     def from_numpy(self, x):
+        """
+         Convert a numpy array to a tensor.
+
+         Args:
+             x (np.ndarray): The array to be converted.
+
+         Returns:
+             (torch.Tensor): The converted tensor
+         """
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
         
     def warmup(self, imgsz=(1, 3, 640, 640)):
-        # Warmup model by running inference once
+        """
+        Warm up the model by running one forward pass with a dummy input.
+
+        Args:
+            imgsz (tuple): The shape of the dummy input tensor in the format (batch_size, channels, height, width)
+
+        Returns:
+            (None): This method runs the forward pass and don't return any value
+        """
         if any((self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb)):  # warmup types
             if self.device.type != 'cpu':  # only warmup GPU models
                 im = torch.zeros(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
@@ -417,19 +443,30 @@ class DetectMultiBackend(nn.Module):
         
     @staticmethod
     def model_type(p='path/to/model.pt'):
-        # Return model type from model path, i.e. path='path/to/model.onnx' -> type=onnx
+        """
+        This function takes a path to a model file and returns the model type
+
+        Args:
+            p: path to the model file. Defaults to path/to/model.pt
+        """
         from export import export_formats
         sf = list(export_formats().Suffix) + ['.xml']  # export suffixes
-        check_suffix(p, sf)  # checks
-        p = Path(p).name  # eliminate trailing separators
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, xml2 = (s in p for s in sf)
-        xml |= xml2  # *_openvino_model or *.xml
-        tflite &= not edgetpu  # *.tflite
-        return pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle
+        if not is_url(p, check=False) and not isinstance(p, str):
+            check_suffix(p, sf)  # checks
+        url = urlparse(p)  # if url may be Triton inference server
+        types = [s in Path(p).name for s in sf]
+        types[8] &= not types[9]  # tflite &= not edgetpu
+        triton = not any(types) and all([any(s in url.scheme for s in ["http", "grpc"]), url.netloc])
+        return types + [triton]
         
     @staticmethod
     def _load_metadata(f=Path('path/to/meta.yaml')):
-        # Load metadata from meta.yaml if it exists
+        """
+        Loads the metadata from a yaml file
+
+        Args:
+            f: The path to the metadata file.
+        """
         if f.exists():
             d = yaml_load(f)
             return d['stride'], d['names']  # assign stride, names
@@ -2512,7 +2549,7 @@ class SwinTransformer_Layer(nn.Module):
         for blk in self.blocks:
             blk.H, blk.W = H, W
             if not torch.jit.is_scripting() and self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, attn_mask)
+                x = self.use_checkpoint.checkpoint(blk, x, attn_mask)
             else:
                 x = blk(x, attn_mask)
         if self.downsample is not None:

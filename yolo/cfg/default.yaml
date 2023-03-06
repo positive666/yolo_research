@@ -9,11 +9,12 @@ model: # path to model file, i.e. yolov8n.pt, yolov8n.yaml
 data:  # path to data file, i.e. i.e. coco128.yaml
 epochs: 100  # number of epochs to train for
 patience: 50  # epochs to wait for no observable improvement for early stopping of training
-batch: 2  # number of images per batch (-1 for AutoBatch)
+batch: 1  # number of images per batch (-1 for AutoBatch)
 imgsz: 640  # size of input images as integer or w,h
 save: True  # save train checkpoints and predict results
+save_period: -1 #Save every x epochs
 cache: False  # True/ram, disk or False. Use cache for data loading
-device:  # device to run on, i.e. cuda device=0 or device=0,1,2,3 or device=cpu
+device: 0 # device to run on, i.e. cuda device=0 or device=0,1,2,3 or device=cpu
 workers: 8  # number of worker threads for data loading (per RANK if DDP)
 project:  # project name
 name:  # experiment name

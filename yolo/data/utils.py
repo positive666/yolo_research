@@ -16,7 +16,7 @@ from PIL import ExifTags, Image, ImageOps
 
 from yolo.utils import DATASETS_DIR, LOGGER, ROOT, colorstr, emojis, yaml_load
 from yolo.utils.checks import check_file, check_font, is_ascii
-from yolo.utils.downloads import download, safe_download
+from utils.downloads import download, safe_download
 from yolo.utils.files import unzip_file
 from yolo.utils.ops import segments2boxes
 

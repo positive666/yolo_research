@@ -10,7 +10,7 @@ from tqdm import tqdm
 from ..utils import NUM_THREADS, TQDM_BAR_FORMAT, is_dir_writeable
 from .augment import *
 from .base import BaseDataset
-from .utils import HELP_URL, LOCAL_RANK, get_hash, img2label_paths, verify_image_label
+from .utils import HELP_URL, LOCAL_RANK, get_hash, img2label_paths , verify_image_label
 
 
 class YOLODataset(BaseDataset):
@@ -87,7 +87,7 @@ class YOLODataset(BaseDataset):
         x["results"] = nf, nm, ne, nc, len(self.im_files)
         x["msgs"] = msgs  # warnings
         x["version"] = self.cache_version  # cache version
-        self.im_files = [lb["im_file"] for lb in x["labels"]]  # update im_files
+        
         if is_dir_writeable(path.parent):
             np.save(str(path), x)  # save cache for next time
             path.with_suffix(".cache.npy").rename(path)  # remove .npy suffix
@@ -119,7 +119,8 @@ class YOLODataset(BaseDataset):
         # Read cache
         [cache.pop(k) for k in ("hash", "version", "msgs")]  # remove items
         labels = cache["labels"]
-
+        self.im_files = [lb['im_file'] for lb in labels]  # update im_files
+        
         # Check if the dataset is all boxes or all segments
         len_cls = sum(len(lb["cls"]) for lb in labels)
         len_boxes = sum(len(lb["bboxes"]) for lb in labels)

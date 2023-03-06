@@ -22,6 +22,7 @@ import torch
 import yaml
 
 # Constants
+__version__="YOlO_Reasearch_Plus"
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[2]  # YOLO
 DEFAULT_CFG_PATH = ROOT / "yolo/cfg/default.yaml"
@@ -30,7 +31,8 @@ NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiproces
 AUTOINSTALL = str(os.getenv('YOLO_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLO_VERBOSE', True)).lower() == 'true'  # global verbose mode
 TQDM_BAR_FORMAT = '{l_bar}{bar:10}{r_bar}'  # tqdm bar format
-LOGGING_NAME = 'ultralytics'
+MACOS, LINUX, WINDOWS = (platform.system() == x for x in ['Darwin', 'Linux', 'Windows'])  # environment booleans
+LOGGING_NAME = 'yolo_research_yolov8'
 HELP_MSG = \
     """
     Usage examples for running YOLOv8:
@@ -205,11 +207,10 @@ def is_jupyter():
     Returns:
         bool: True if running inside a Jupyter Notebook, False otherwise.
     """
-    try:
+    with contextlib.suppress(Exception):
         from IPython import get_ipython
         return get_ipython() is not None
-    except ImportError:
-        return False
+    return False
 
 
 def is_docker() -> bool:
@@ -225,6 +226,23 @@ def is_docker() -> bool:
             return 'docker' in f.read()
     else:
         return False
+
+def is_online() -> bool:
+    """
+    Check internet connectivity by attempting to connect to a known online host.
+
+    Returns:
+        bool: True if connection is successful, False otherwise.
+    """
+    import socket
+    with contextlib.suppress(Exception):
+        host = socket.gethostbyname('www.github.com')
+        socket.create_connection((host, 80), timeout=2)
+        return True
+    return False
+
+
+ONLINE = is_online()
 
 
 def is_pip_package(filepath: str = __name__) -> bool:
@@ -342,7 +360,14 @@ def get_git_branch():
 
 
 def get_default_args(func):
-    # Get func() default arguments
+    """Returns a dictionary of default arguments for a function.
+
+    Args:
+        func (callable): The function to inspect.
+
+    Returns:
+        dict: A dictionary where each key is a parameter name, and each value is the default value of that parameter.
+    """
     signature = inspect.signature(func)
     return {k: v.default for k, v in signature.parameters.items() if v.default is not inspect.Parameter.empty}
 
@@ -357,18 +382,15 @@ def get_user_config_dir(sub_dir='Ultralytics'):
     Returns:
         Path: The path to the user config directory.
     """
-    # Get the operating system name
-    os_name = platform.system()
-
     # Return the appropriate config directory for each operating system
-    if os_name == 'Windows':
+    if WINDOWS:
         path = Path.home() / 'AppData' / 'Roaming' / sub_dir
-    elif os_name == 'Darwin':  # macOS
+    elif MACOS:  # macOS
         path = Path.home() / 'Library' / 'Application Support' / sub_dir
-    elif os_name == 'Linux':
+    elif LINUX:
         path = Path.home() / '.config' / sub_dir
     else:
-        raise ValueError(f'Unsupported operating system: {os_name}')
+        raise ValueError(f'Unsupported operating system: {platform.system()}')
 
     # GCP and AWS lambda fix, only /tmp is writeable
     if not is_dir_writeable(str(path.parent)):
@@ -385,33 +407,46 @@ USER_CONFIG_DIR = get_user_config_dir()  # Ultralytics settings dir
 
 def emojis(string=''):
     # Return platform-dependent emoji-safe version of string
-    return string.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else string
+    return string.encode().decode('ascii', 'ignore') if WINDOWS else string
 
 
 def colorstr(*input):
     # Colors a string https://en.wikipedia.org/wiki/ANSI_escape_code, i.e.  colorstr('blue', 'hello world')
-    *args, string = input if len(input) > 1 else ("blue", "bold", input[0])  # color arguments, string
+    *args, string = input if len(input) > 1 else ('blue', 'bold', input[0])  # color arguments, string
     colors = {
-        "black": "\033[30m",  # basic colors
-        "red": "\033[31m",
-        "green": "\033[32m",
-        "yellow": "\033[33m",
-        "blue": "\033[34m",
-        "magenta": "\033[35m",
-        "cyan": "\033[36m",
-        "white": "\033[37m",
-        "bright_black": "\033[90m",  # bright colors
-        "bright_red": "\033[91m",
-        "bright_green": "\033[92m",
-        "bright_yellow": "\033[93m",
-        "bright_blue": "\033[94m",
-        "bright_magenta": "\033[95m",
-        "bright_cyan": "\033[96m",
-        "bright_white": "\033[97m",
-        "end": "\033[0m",  # misc
-        "bold": "\033[1m",
-        "underline": "\033[4m"}
-    return "".join(colors[x] for x in args) + f"{string}" + colors["end"]
+        'black': '\033[30m',  # basic colors
+        'red': '\033[31m',
+        'green': '\033[32m',
+        'yellow': '\033[33m',
+        'blue': '\033[34m',
+        'magenta': '\033[35m',
+        'cyan': '\033[36m',
+        'white': '\033[37m',
+        'bright_black': '\033[90m',  # bright colors
+        'bright_red': '\033[91m',
+        'bright_green': '\033[92m',
+        'bright_yellow': '\033[93m',
+        'bright_blue': '\033[94m',
+        'bright_magenta': '\033[95m',
+        'bright_cyan': '\033[96m',
+        'bright_white': '\033[97m',
+        'end': '\033[0m',  # misc
+        'bold': '\033[1m',
+        'underline': '\033[4m'}
+    return ''.join(colors[x] for x in args) + f'{string}' + colors['end']
+
+
+def remove_ansi_codes(string):
+    """
+    Remove ANSI escape sequences from a string.
+
+    Args:
+        string (str): The input string that may contain ANSI escape sequences.
+
+    Returns:
+        str: The input string with ANSI escape sequences removed.
+    """
+    return re.sub(r'\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]', '', string)
 
 
 def set_logging(name=LOGGING_NAME, verbose=True):
@@ -419,21 +454,21 @@ def set_logging(name=LOGGING_NAME, verbose=True):
     rank = int(os.getenv('RANK', -1))  # rank in world for Multi-GPU trainings
     level = logging.INFO if verbose and rank in {-1, 0} else logging.ERROR
     logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
             name: {
-                "format": "%(message)s"}},
-        "handlers": {
+                'format': '%(message)s'}},
+        'handlers': {
             name: {
-                "class": "logging.StreamHandler",
-                "formatter": name,
-                "level": level}},
-        "loggers": {
+                'class': 'logging.StreamHandler',
+                'formatter': name,
+                'level': level}},
+        'loggers': {
             name: {
-                "level": level,
-                "handlers": [name],
-                "propagate": False}}})
+                'level': level,
+                'handlers': [name],
+                'propagate': False}}})
 
 
 class TryExcept(contextlib.ContextDecorator):
@@ -567,14 +602,17 @@ def set_settings(kwargs, file=USER_CONFIG_DIR / 'settings.yaml'):
 # Run below code on yolo/utils init ------------------------------------------------------------------------------------
 
 # Set logger
-set_logging(LOGGING_NAME)  # run before defining LOGGER
+set_logging(LOGGING_NAME, verbose=VERBOSE)  # run before defining LOGGER
 LOGGER = logging.getLogger(LOGGING_NAME)  # define globally (used in train.py, val.py, detect.py, etc.)
-if platform.system() == 'Windows':
+if WINDOWS:
     for fn in LOGGER.info, LOGGER.warning:
         setattr(LOGGER, fn.__name__, lambda x: fn(emojis(x)))  # emoji safe logging
 
 # Check first-install steps
-PREFIX = colorstr("Ultralytics: ")
+PREFIX = colorstr('Ultralytics: ')
 SETTINGS = get_settings()
 DATASETS_DIR = Path(SETTINGS['datasets_dir'])  # global datasets directory
+ENVIRONMENT = 'Colab' if is_colab() else 'Kaggle' if is_kaggle() else 'Jupyter' if is_jupyter() else \
+    'Docker' if is_docker() else platform.system()
+TESTS_RUNNING = is_pytest_running() or is_github_actions_ci()
 set_sentry()

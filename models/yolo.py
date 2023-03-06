@@ -82,28 +82,6 @@ class V8_Detect(nn.Module):
             a[-1].bias.data[:] = 1.0  # box
             b[-1].bias.data[:m.nc] = math.log(5 / m.nc / (640 / s) ** 2)  # cls (.01 objects, 80 classes, 640 img)
 
-class V8_Segment(V8_Detect):
-    # YOLOv8 Segment head for segmentation models
-    def __init__(self, nc=80, nm=32, npr=256, ch=()):
-        super().__init__(nc, ch)
-        self.nm = nm  # number of masks
-        self.npr = npr  # number of protos
-        self.proto = Proto(ch[0], self.npr, self.nm)  # protos
-        self.detect = Detect.forward
-
-        c4 = max(ch[0] // 4, self.nm)
-        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.nm, 1)) for x in ch)
-
-    def forward(self, x):
-        p = self.proto(x[0])  # mask protos
-        bs = p.shape[0]  # batch size
-
-        mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
-        x = self.detect(self, x)
-        if self.training:
-            return x, mc, p
-        return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
-    
     
 ## yolov5 head
 class Detect(nn.Module):
@@ -429,6 +407,29 @@ class IDetect(nn.Module):
         box @= convert_matrix                          
         return (box, score)
 
+
+
+class V8_Segment(V8_Detect):
+    # YOLOv8 Segment head for segmentation models
+    def __init__(self, nc=80, nm=32, npr=256, ch=()):
+        super().__init__(nc, ch)
+        self.nm = nm  # number of masks
+        self.npr = npr  # number of protos
+        self.proto = Proto(ch[0], self.npr, self.nm)  # protos
+        self.detect = V8_Detect.forward
+
+        c4 = max(ch[0] // 4, self.nm)
+        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.nm, 1)) for x in ch)
+
+    def forward(self, x):
+        p = self.proto(x[0])  # mask protos
+        bs = p.shape[0]  # batch size
+
+        mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
+        x = self.detect(self, x)
+        if self.training:
+            return x, mc, p
+        return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
 
 class Segment(Detect):
     # YOLOv5 Segment head for segmentation models
@@ -1069,7 +1070,7 @@ class BaseModel(nn.Module):
 class DetectionModel(BaseModel):
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None,verbose=True):  # model, input channels, number of classes
         super().__init__()
-      
+        anchor_head=True
         self.yaml = cfg if isinstance(cfg, dict) else yaml_load(check_yaml(cfg), append_filename=True)  # cfg dict  
         # else:  # is *.yaml
         #     import yaml  # for torch hub
@@ -1086,28 +1087,38 @@ class DetectionModel(BaseModel):
             LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
             self.yaml['anchors'] = round(anchors)  # override yaml value
             
-        if 'anchors' not in (self.yaml):       
-            LOGGER.info(f'Using model.yaml anchors with anchorsfree')   
-            if self.yaml['head'][-1][-2]=="Detect":
-                 self.yaml['head'][-1][-2]="V8_Detect"     # default names)
+        if 'anchors' not in (self.yaml):   # rename: yaml model names
+            anchor_head=False  
+            LOGGER.info(f'--Using model.yaml anchors with anchorsfree:{not anchor_head}----') 
+            if  self.yaml['head'][-1][-2]=="Detect":
+                self.yaml['head'][-1][-2]="V8_Detect"     
             elif self.yaml['head'][-1][-2]=="Segment":
                 self.yaml['head'][-1][-2]="V8_Segment"
+               
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch],verbose=verbose)  # model, savelist
         self.names = {i:f'{i}' for i in range(self.yaml['nc'])} # default names
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment)) :
-            s = 256  # 2x min stride
-            m.inplace = self.inplace
-            forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, ISegment, IRSegment)) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
-            check_anchor_order(m)  # must be in pixel-space (not grid-space)
-            m.anchors /= m.stride.view(-1, 1, 1)
-            self.stride = m.stride
-            self._initialize_biases()  # only run once    
-           
+        if isinstance(m, (V8_Detect,V8_Segment,Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment)) :
+            if anchor_head:
+                s = 256  # 2x min stride
+                m.inplace = self.inplace
+                forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, ISegment, IRSegment)) else self.forward(x)
+                m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+                check_anchor_order(m)  # must be in pixel-space (not grid-space)
+                m.anchors /= m.stride.view(-1, 1, 1)
+                self.stride = m.stride
+                self._initialize_biases()  # only run once    
+            else:
+                s=256
+                m.inplace = self.inplace
+                forward=lambda x:self.forward(x)[0] if isinstance(m,V8_Segment) else self.forward_v8(x)
+                m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+                self.stride = m.stride
+                m.bias_init()  # onlu run once
+                
         elif isinstance(m, Decoupled_Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
@@ -1116,17 +1127,16 @@ class DetectionModel(BaseModel):
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
             self._initialize_dh_biases()  # only run once
-        elif isinstance(m,(V8_Detect,V8_Segment)):
-            s=256
-            m.inplace = self.inplace
-            forward=lambda x:self.forward(x)[0] if isinstance(m,V8_Segment) else self.forward_v8(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward_v8(torch.zeros(1, ch, s, s))])  # forward
-            self.stride = m.stride
-            m.bias_init()  # onlu run once
+        # elif isinstance(m,(V8_Detect,V8_Segment)):
+        #     s=256
+        #     m.inplace = self.inplace
+        #     forward=lambda x:self.forward(x)[0] if isinstance(m,V8_Segment) else self.forward_v8(x)
+        #     m.stride = torch.tensor([s / x.shape[-2] for x in self.forward_v8(torch.zeros(1, ch, s, s))])  # forward
+        #     self.stride = m.stride
+        #     m.bias_init()  # onlu run once
         elif isinstance(m, IAuxDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[:4]])  # forward
-            #print(m.stride)
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
@@ -1496,9 +1506,9 @@ class kP_DetectionModel(BaseModel):
 
 class ClassificationModel(BaseModel):
     # YOLOv5and YOLOV8 classification model
-    def __init__(self, cfg=None, model=None, nc=1000, cutoff=10):  # yaml, model, number of classes, cutoff index
+    def __init__(self, cfg=None, model=None, ch=3,nc=None, cutoff=10,verbose=True):  # yaml, model, number of classes, cutoff index
         super().__init__()
-        self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg)
+        self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg,ch,nc,verbose)
 
     def _from_detection_model(self, model, nc=1000, cutoff=10):
         # Create a YOLOv5 classification model from a YOLOv5 detection model
@@ -1523,6 +1533,8 @@ class ClassificationModel(BaseModel):
         if nc and nc != self.yaml['nc']:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
+        elif not nc and not self.yaml.get('nc',None):
+            raise ValueError('nc not specified,Must specify nc in mode.yaml or function arguments')    
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], verbose=verbose)  # model, savelist
         self.names = {i: f'{i}' for i in range(self.yaml['nc'])}  # default names dict
         self.info()
@@ -1558,23 +1570,27 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
     nkpt=0
     no=0
-   # anchors=None
+    anchors_head=True 
     if verbose:
             LOGGER.info(f"\n{'':>3}{'from':>20}{'n':>3}{'params':>10}  {'module':<45}{'arguments':<30}")
     nc, gd, gw,act=  d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    # check anchors
     if 'anchors' in d.keys():
         anchors=d['anchors']
         na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
         no = na * (nc + 5 + 2*nkpt)   # number of outputs = anchors * (classes + 5)
+        
     else:
-        print('V8_anchor-free!')  
+        LOGGER.info('V8_anchor-free!')  
         no=nc
-    if 'nkpt' in  d.keys():
+        anchors_head=False 
+    if 'nkpt'in d.keys():
        nkpt=d['nkpt']  
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
-        LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    
+        if verbose:
+            LOGGER.info(f"{colorstr('activation:')} {act}")  # print
+   
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         args_dict = {}
@@ -1585,7 +1601,7 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
             
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in {nn.Conv2d,C2f,C1, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,ResBlock_CBAM,CBAM,DownC,Stem,
+        if m in {Classify,nn.Conv2d,C2f,C1, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,ResBlock_CBAM,CBAM,DownC,Stem,
                  CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                   RepConv, RepConv_OREPA,RepBottleneck, RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC,  
                  Res, ResCSPA, ResCSPB, ResCSPC, 
@@ -1629,12 +1645,14 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
             c2 = ch[f] // 2    
         elif m in {V8_Detect,V8_Segment,Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment}:    
             args.append([ch[x] for x in f])
-            if isinstance(args[1], int):  # number of anchors
+            if isinstance(args[1], int) and anchors_head:  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)   
-            if m in{V8_Segment}:
-                args[2]=make_divisible(args[2] * gw, 8)
-            if m in {Segment, ISegment, IRSegment}:
-                args[3] = make_divisible(args[3] * gw, 8)    
+         
+            if m in {V8_Segment,Segment, ISegment, IRSegment}:
+                if not anchors_head:
+                    args[2]=make_divisible(args[2] * gw, 8)
+                else:
+                    args[3] = make_divisible(args[3] * gw, 8)   
             if 'dw_conv_kpt' in d.keys():
                 args_dict = {"dw_conv_kpt" : d['dw_conv_kpt']}    
         elif m is ReOrg:
@@ -1655,8 +1673,7 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        if 'dw_conv_kpt' in d.keys():
-            
+        if 'dw_conv_kpt' in d.keys():     
             m_ = nn.Sequential(*[m(*args, **args_dict) for _ in range(n)]) if n > 1 else m(*args, **args_dict)  # module
         else:
             m_ = nn.Sequential(*[m(*args) for _ in range(n)]) if n > 1 else m(*args)  # module
@@ -1717,6 +1734,8 @@ def guess_model_task(model):
     # Unable to determine task from model
     raise SyntaxError("YOLO is unable to automatically guess model task. Explicitly define task for your model, "
                       "i.e. 'task=detect', 'task=segment' or 'task=classify'.")
+    
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
