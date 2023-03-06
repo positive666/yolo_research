@@ -451,7 +451,7 @@ class DetectMultiBackend(nn.Module):
         """
         from export import export_formats
         sf = list(export_formats().Suffix) + ['.xml']  # export suffixes
-        if not is_url(p, check=False) and not isinstance(p, str):
+        if not is_url(p, False) and not isinstance(p, str):
             check_suffix(p, sf)  # checks
         url = urlparse(p)  # if url may be Triton inference server
         types = [s in Path(p).name for s in sf]
