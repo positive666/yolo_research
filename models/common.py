@@ -449,7 +449,7 @@ class DetectMultiBackend(nn.Module):
         Args:
             p: path to the model file. Defaults to path/to/model.pt
         """
-        from export import export_formats
+        from yolo.engine.exporter import export_formats
         sf = list(export_formats().Suffix) + ['.xml']  # export suffixes
         if not is_url(p, False) and not isinstance(p, str):
             check_suffix(p, sf)  # checks
