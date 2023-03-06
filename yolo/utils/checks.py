@@ -21,9 +21,9 @@ import torch
 #from IPython import display
 from matplotlib import font_manager
 
-from yolo.utils import (AUTOINSTALL, LOGGER, ROOT, USER_CONFIG_DIR, TryExcept, colorstr, downloads, emojis,
+from yolo.utils import (AUTOINSTALL, LOGGER, ROOT, USER_CONFIG_DIR, TryExcept, colorstr,  emojis,
                                     is_colab, is_docker, is_jupyter,is_online)
-
+from utils import downloads
 
 def is_ascii(s) -> bool:
     """
