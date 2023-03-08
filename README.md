@@ -1,24 +1,24 @@
 
 <div align='left'>
-  <img src=https://img.shields.io/github/stars/positive666/yolov_research.svg?style=social >
-  <img src=https://img.shields.io/github/forks/positive666/yolov_research.svg?style=social >
-  <img src=https://img.shields.io/github/watchers/positive666/yolov_research.svg?style=social>
+  <img src=https://img.shields.io/github/stars/positive666/yolo_research.svg?style=social >
+  <img src=https://img.shields.io/github/forks/positive666/yolo_research.svg?style=social >
+  <img src=https://img.shields.io/github/watchers/positive666/yolo_research.svg?style=social>
 </div> 
 
 
-<div align="center">
+<!-- <div align="center">
 <p>
    <a align="left" href="https://github.com/positive666/yolo_research" target="_blank">
    <img src="./data/images/yolov.jpg" width="87%"></a>
 </p>
-</div>
+</div> -->
 
 
 
 ##  <div align="left">🚀 yolo_reserach PLUS High-level</div>
 
 
-更新升级中.. Add latest V8 core （目前工程存在问题属于正常，除重大问题外会不断更新优化，有问题挂issue）
+更新升级中.. Add latest V8 core （工作繁忙，会不断更新优化，有问题挂issue）
 
 ### <div align="left">⭐新闻板块【实时更新/计划】</div>
 	- 2023/3/1  add v8 core:春节期间看了下V8，由于近半年项目比较多也是耽误了好久(原版本是将V8的所有功能全部融合到了V5的代码中，和V8命令一样，但是训练的时候发生了问题，排查发现问题发生在V5的数据读取处理，所以暂时使用V8的训练结构代码，也便于区分)，然后抓紧时间不停更新；
