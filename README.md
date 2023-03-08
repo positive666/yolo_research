@@ -115,13 +115,22 @@ pip install -r requirements.txt  # install
 </details>
 
 <details>
-<summary>YOLOV8_part </summary>
+<summary>YOLOV8 feature  command</summary>
 
 ```bash
 yolo task=detect    mode=train    model=yolov8n.pt        args...
           classify       predict        yolov8n-cls.yaml  args...
           segment        val            yolov8n-seg.yaml  args...
                          export         yolov8n.pt        format=onnx  args...
+```
+python command :
+
+if use python ,you need set your data and model path in cfg/default.yaml
+
+```bash
+    
+    python yolo\v8\detect\train.py  
+
 ```
 </details>  
 
@@ -172,6 +181,7 @@ yolov7 官方的訓練权重打包链接：https://pan.baidu.com/s/1UIYzEZqTPMUp
 ###  Train
 
 see train.py args ,command as :
+
 
 ```bash
 python train.py --data <your data yaml>  --cfg  <your model yaml> --weights <weights path>  --batch-size 128    --hyp   <hyps yaml>  --batch-size <numbers>  

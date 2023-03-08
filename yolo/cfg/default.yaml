@@ -109,3 +109,6 @@ cfg:  # for overriding defaults.yaml
 
 # Debug, do not modify -------------------------------------------------------------------------------------------------
 v5loader: False  # use legacy YOLOv5 dataloader
+
+# Tracker settings
+tracker: botsort.yaml
