@@ -15,6 +15,22 @@ import logging
 
 LOGGER = logging.getLogger("yolo_research")
            
+def check_class_names(names):
+    # Check class names. Map imagenet class codes to human-readable names if required. Convert lists to dicts.
+    if isinstance(names, list):  # names is a list
+        names = dict(enumerate(names))  # convert to dict
+    if isinstance(names, dict):
+        if not all(isinstance(k, int) for k in names.keys()):  # convert string keys to int, i.e. '0' to 0
+            names = {int(k): v for k, v in names.items()}
+        n = len(names)
+        if max(names.keys()) >= n:
+            raise KeyError(f'{n}-class dataset requires class indices 0-{n - 1}, but you have invalid class indices '
+                           f'{min(names.keys())}-{max(names.keys())} defined in your dataset YAML.')
+        if isinstance(names[0], str) and names[0].startswith('n0'):  # imagenet class codes, i.e. 'n01440764'
+            map = yaml_load(ROOT / 'datasets/ImageNet.yaml')['map']  # human-readable names
+            names = {k: map[v] for k, v in names.items()}
+    return names           
+           
 class Sum(nn.Module):
     # Weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, n, weight=False):  # n: number of inputs

@@ -134,12 +134,14 @@ def check_latest_pypi_version(package_name='ultralytics'):
     return None
 
 
-def check_pip_update():
+def check_pip_update_available():
     from yolo.utils import __version__
     latest = check_latest_pypi_version()
     if pkg.parse_version(__version__) < pkg.parse_version(latest):
         LOGGER.info(f'New https://pypi.org/project/ultralytics/{latest} available 😃 '
                     f"Update with 'pip install -U ultralytics'")
+        return True
+    return False
         
 def check_font(font='Arial.ttf'):
     """

@@ -12,7 +12,7 @@ from yolo.cfg import get_cfg
 from yolo.engine.exporter import Exporter
 from yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS, LOGGER, ONLINE, RANK, ROOT,
                                     callbacks, is_git_dir, is_pip_package, yaml_load)
-from yolo.utils.checks import  check_file,check_imgsz,check_pip_update, check_yaml
+from yolo.utils.checks import  check_file,check_imgsz,check_pip_update_available, check_yaml
 from utils.downloads import GITHUB_ASSET_STEMS
 from utils.torch_utils import smart_inference_mode
 
@@ -161,7 +161,7 @@ class YOLO:
         Inform user of ultralytics package update availability
         """
         if ONLINE and is_pip_package():
-            check_pip_update()
+            check_pip_update_available()
 
     def reset(self):
         """

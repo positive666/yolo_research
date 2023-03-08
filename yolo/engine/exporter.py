@@ -69,7 +69,7 @@ from yolo.cfg import get_cfg
 from yolo.data.dataloaders.stream_loaders import LoadImages
 from yolo.data.utils import check_det_dataset
 from yolo.utils import DEFAULT_CFG, LOGGER, callbacks, colorstr, get_default_args, yaml_save
-from utils.general import check_img_size, Profile, check_requirements, check_version, check_yaml
+from utils.general import check_img_size, Profile, check_requirements, check_version
 from yolo.utils.files import file_size
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -561,7 +561,7 @@ class Exporter:
                     if n >= n_images:
                         break
 
-            dataset = LoadImages(check_det_dataset(check_yaml(data))['train'], imgsz=imgsz, auto=False)
+            dataset = LoadImages(check_det_dataset(data)['train'], imgsz=imgsz, auto=False)
             converter.representative_dataset = lambda: representative_dataset_gen(dataset, n_images=100)
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
             converter.target_spec.supported_types = []

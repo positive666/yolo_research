@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
 from utils import TryExcept
-from utils.downloads import  is_url,attempt_download_asset
+from utils.downloads import is_url,attempt_download_asset
 from utils.dataloaders import exif_transpose, letterbox
 from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suffix, check_version, colorstr, increment_path,
                            is_jupyter,make_divisible,non_max_suppression, yolov8_non_max_suppression,scale_boxes, xywh2xyxy, xyxy2xywh,yaml_load)
@@ -242,7 +242,12 @@ class DetectMultiBackend(nn.Module):
                 stride, names = self._load_metadata(meta)  # load metadata
         elif engine:  # TensorRT
             LOGGER.info(f'Loading {w} for TensorRT inference...')
-            import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
+            try:
+                import tensorrt as trt  # https://developer.nvidia.com/nvidia-tensorrt-download
+            except ImportError:
+                from  yolo.utils import LINUX
+                if LINUX:
+                    check_requirements("nvidia-tensorrt",cmd="-U --index-url https://pypi.ngc.nvidia.com")
             check_version(trt.__version__, '7.0.0', hard=True)  # require tensorrt>=7.0.0
             Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
             logger = trt.Logger(trt.Logger.INFO)
@@ -314,7 +319,7 @@ class DetectMultiBackend(nn.Module):
         elif paddle:  # PaddlePaddle
             LOGGER.info(f'Loading {w} for PaddlePaddle inference...')
             check_requirements('paddlepaddle-gpu' if cuda else 'paddlepaddle')
-            import paddle.inference as pdi
+            import paddle.inference as pdi  #noqa
             if not Path(w).is_file():  # if not *.pdmodel
                 w = next(Path(w).rglob('*.pdmodel'))  # get *.pdmodel file from *_openvino_model dir
             weights = Path(w).with_suffix('.pdiparams')
@@ -327,7 +332,7 @@ class DetectMultiBackend(nn.Module):
         elif triton:  # NVIDIA Triton Inference Server
             LOGGER.info('Triton Inference Server not supported...')
         else:
-            raise NotImplementedError(f'ERROR: {w} is not a supported format')
+            raise TypeError(f'model=:{w} is not a supported format')
 
         # class names
         if 'names' not in locals():
