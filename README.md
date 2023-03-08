@@ -1,21 +1,21 @@
 
 <div align='left'>
-  <img src=https://img.shields.io/github/stars/positive666/yolov5_research.svg?style=social >
-  <img src=https://img.shields.io/github/forks/positive666/yolov5_research.svg?style=social >
-  <img src=https://img.shields.io/github/watchers/positive666/yolov5_research.svg?style=social>
+  <img src=https://img.shields.io/github/stars/positive666/yolov_research.svg?style=social >
+  <img src=https://img.shields.io/github/forks/positive666/yolov_research.svg?style=social >
+  <img src=https://img.shields.io/github/watchers/positive666/yolov_research.svg?style=social>
 </div> 
 
 
 <div align="center">
 <p>
-   <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
+   <a align="left" href="https://github.com/positive666/yolo_research" target="_blank">
    <img src="./data/images/yolov.jpg" width="87%"></a>
 </p>
 </div>
 
 
 
-##  <div align="left">🚀 yolov5_reserach PLUS_High-level</div>
+##  <div align="left">🚀 yolo_reserach PLUS High-level</div>
 
 
 更新升级中.. Add latest V8 core （目前工程存在问题属于正常，除重大问题外会不断更新优化，有问题挂issue）
@@ -114,7 +114,7 @@ pip install -r requirements.txt  # install
 
 </details>
 
-<details>
+<details open>
 <summary>YOLOV8 feature  command</summary>
 
 ```bash
@@ -424,7 +424,7 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 ## Acknowledgements
 
 <details><summary> <b>Expand</b> </summary>
-
+* [https://github.com/ultralytics/ultralytics](https://github.com/ultralytics/ultralytics)
 * [https://github.com/WongKinYiu/yolov7](https://github.com/WongKinYiu/yolov7)
 * [https://github.com/ultralytics/yolov5](https://github.com/ultralytics/yolov5)
 * [https://github.com/TexasInstruments/edgeai-yolov5/tree/yolo-pose](https://github.com/TexasInstruments/edgeai-yolov5/tree/yolo-pose)
