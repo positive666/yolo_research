@@ -4,13 +4,16 @@ from itertools import repeat
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
+import cv2
+import numpy as np
+import torch
 import torchvision
 from tqdm import tqdm
 
 from ..utils import NUM_THREADS, TQDM_BAR_FORMAT, is_dir_writeable
-from .augment import *
+from .augment  import Compose,Format,Instances,LetterBox,classify_albumentations,classify_transforms,v8_transforms
 from .base import BaseDataset
-from .utils import HELP_URL, LOCAL_RANK, get_hash, img2label_paths , verify_image_label
+from .utils import HELP_URL, LOCAL_RANK,LOGGER, get_hash, img2label_paths , verify_image_label
 
 
 class YOLODataset(BaseDataset):
@@ -108,7 +111,7 @@ class YOLODataset(BaseDataset):
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop("results")  # found, missing, empty, corrupt, total
-        if exists and LOCAL_RANK in {-1, 0}:
+        if exists and LOCAL_RANK in (-1, 0):
             d = f"Scanning {cache_path}... {nf} images, {nm + ne} backgrounds, {nc} corrupt"
             tqdm(None, desc=self.prefix + d, total=n, initial=n, bar_format=TQDM_BAR_FORMAT)  # display cache results
             if cache["msgs"]:

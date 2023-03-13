@@ -223,7 +223,7 @@ class YOLO:
         return self.predictor.predict_cli(source=source) if is_cli else self.predictor(source=source, stream=stream)
 
     def track(self, source=None, stream=False, **kwargs):
-        from ultralytics.tracker import register_tracker
+        from tracker import register_tracker
         register_tracker(self)
         # ByteTrack-based method needs low confidence predictions as input
         conf = kwargs.get('conf') or 0.1
@@ -321,7 +321,7 @@ class YOLO:
         self.trainer.hub_session = self.session  # attach optional HUB session
         self.trainer.train()
         # update model and cfg after training
-        if RANK in {0, -1}:
+        if RANK in (-1, 0):
             self.model, _ = attempt_load_one_weight(str(self.trainer.best))
             self.overrides = self.model.args
             self.metrics = getattr(self.trainer.validator, 'metrics', None)  # TODO: no metrics returned by DDP

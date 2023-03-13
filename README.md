@@ -39,7 +39,7 @@
 
 
 ```
-yolov5_research
+yolo_research
 │   pose  
 │   └─────   ## 关键点检测任务使用
 │   ...    
@@ -77,7 +77,7 @@ yolov5_research
 
 # Feature 🚀 
 
-     - 以最新的yoloV5工程风格代码融合，针对High-level任务：完成先进的检测器、分类器、分割、关键点检测功能集成，删除额外的三方库依赖
+     - 以最新的yoloV5工程风格代码融合，加入V8部分, 针对High-level任务：完成先进的检测器、跟踪器、分类器、分割、关键点检测功能任务集成，删除额外的三方库依赖
      
      - 实时的v5代码更新改动&&v7等work的结构适配（每周同步yolov5的代码优化）
      
@@ -132,6 +132,8 @@ if use python ,you need set your data and model path in cfg/default.yaml
     python yolo\v8\detect\train.py  
 
 ```
+
+推理部分和V5、V8的代码兼容
 </details>  
 
 <details>
