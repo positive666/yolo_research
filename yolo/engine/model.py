@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import List
 
-import yolo 
+from yolo import v8
 from models.yolo import (ClassificationModel, DetectionModel, SegmentationModel,
                                   guess_model_task, nn)
 from models.experimental  import   attempt_load_one_weight
@@ -20,14 +20,14 @@ from utils.torch_utils import smart_inference_mode
 # Map head to model, trainer, validator, and predictor classes
 TASK_MAP = {
     'classify': [
-        ClassificationModel, yolo.v8.classify.ClassificationTrainer, yolo.v8.classify.ClassificationValidator,
-        yolo.v8.classify.ClassificationPredictor],
+        ClassificationModel, v8.classify.ClassificationTrainer, v8.classify.ClassificationValidator,
+        v8.classify.ClassificationPredictor],
     'detect': [
-        DetectionModel, yolo.v8.detect.DetectionTrainer, yolo.v8.detect.DetectionValidator,
-        yolo.v8.detect.DetectionPredictor],
+        DetectionModel, v8.detect.DetectionTrainer,v8.detect.DetectionValidator,
+        v8.detect.DetectionPredictor],
     'segment': [
-        SegmentationModel, yolo.v8.segment.SegmentationTrainer, yolo.v8.segment.SegmentationValidator,
-        yolo.v8.segment.SegmentationPredictor]}
+        SegmentationModel, v8.segment.SegmentationTrainer, v8.segment.SegmentationValidator,
+        v8.segment.SegmentationPredictor]}
 
 
 class YOLO:

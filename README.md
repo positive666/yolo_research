@@ -44,17 +44,20 @@ yolo_research
 │   └─────   ## 关键点检测任务使用
 │   ...    
 │   models   ## 存储模型：算子定义和所有模型的yaml结构定义，包含yolov5\yolov7\yolov8  
-│   └─────   cls       分类模型结构
-│            pose      关键点模型结构
-│            segment   分割模型结构
-│            ....      其余是检测部分待整理      
+
+    └─────   common.py   模型算子定义
+             yolo.py     模型结构定义
+│   └─────   cls         分类模型结构
+│            pose        关键点模型结构
+│            segment     分割模型结构
+│            detect  v5U_cfg/v7——cfg/v8_cfg    检测模型结构..其余是V5版本以及一些改的参考示例      
 │   ....
 │   segment
-│   └─────   ## 分割任务使用
+│   └─────   ## 分割任务
 |   classify
-│   └─────   ## 分类任务使用
+│   └─────   ## 分类任务
 |   tracker
-│   └─────   ## 跟踪任务使用 Fork V8
+│   └─────   ## 跟踪任务 Fork V8
 │   utils
 │   └─────   #通用部分代码
 |          .
@@ -90,7 +93,7 @@ yolo_research
 <details >
 <summary>关于模型修改和设计</summary>
 
-     - 2021年在CSDN中介绍过一些范式示例包含注意力、自注意力层等机制早期引入了一些比较有热度的修改，其实在如今图像基础任务表现里，CNN和transformer并不没有明显差距，个人觉得作为学习积累就好。比如swinv1和v2等一些当时流行的论文网络组件，以及同样的NECK、HEAD、LOSS的添加，但是最近1年魔改成风，这里有我的问题，所以后续做一些总结在我博客的系列文章里，你可以参考github项目中的yaml结构示例去自己尝试修改模型，就是希望大家能够多思考多积累且自己动手实现，也是我当初文章的本意，而不是只限于一种范式或几种结构，如果遇到问题欢迎分享讨论，具体可以看博客中的[修改建议](https://editor.csdn.net/md/?articleId=126895964）
+     - 2021年在CSDN中介绍过一些范式示例包含注意力、自注意力层等机制早期引入了一些比较有热度的修改，其实在如今图像基础任务表现里，CNN和transformer并不没有明显差距，个人觉得作为学习积累就好。比如swinv1和v2等一些当时流行的论文网络组件，以及同样的NECK、HEAD、LOSS的添加，你可以参考github项目中的yaml结构示例去自己尝试修改模型，就是希望大家能够多思考多积累且自己动手实现，也是我当初文章的本意，而不是只限于一种范式或几种结构，如果遇到问题欢迎分享讨论，具体可以看博客中的[修改建议](https://editor.csdn.net/md/?articleId=126895964）
 
      - 对于自注意力机制的使用：很多人与CNN相结合使用得到精度提升，个人理解：原因不仅仅是长距离的依赖，早期我们使用固定权重的滤波器提取边缘再到CNN，CNN也许是对应着高通滤波，而self-attention对应于低通滤波，那么相当于对featuremap进行了一次平滑，这样从某种程度上可以解释互补之后的提升；而且transfromer是很难发生过拟合或者说不存在，同时由于增量爆炸和工程开发的现象，使得其并不好训练，但是动态特性确实更具泛化性，常规情况中优先考虑你训练数据集的拟合够不够好，你的模型是否能反映出数据之间的特征特异性，其次扩充构建相应的辅助分支加入特征属性描述。
 
@@ -115,21 +118,24 @@ pip install -r requirements.txt  # install
 </details>
 
 <details open>
-<summary>YOLOV8 feature  command</summary>
+<summary>YOLOV8 install in conda env  and  offical command</summary>
 
+if you pip install ultralytics,you can run offical command 
 ```bash
-yolo task=detect    mode=train    model=yolov8n.pt        args...
-          classify       predict        yolov8n-cls.yaml  args...
-          segment        val            yolov8n-seg.yaml  args...
-                         export         yolov8n.pt        format=onnx  args...
+yolo task=detect    mode=train   data=<data.yaml path>      model=yolov8n.pt        args...
+          classify       predict        coco-128.yaml       yolov8n-cls.yaml  args...
+          segment        val                                yolov8n-seg.yaml  args...
+                         export                             yolov8n.pt        format=onnx  args...
 ```
+ps: if your model=*.yaml -->scratch else use pretrained models
 python command :
+
 
 if use python ,you need set your data and model path in cfg/default.yaml
 
 ```bash
     
-    python yolo\v8\detect\train.py  
+    python yolo\v8\detect\train.py  --<args>
 
 ```
 
@@ -192,7 +198,7 @@ python train.py --data <your data yaml>  --cfg  <your model yaml> --weights <wei
 <summary>Notes</summary>
 
 - "--swin_float"  for "SwinTransformer_Layer" layers,because of " @" not support  fp16,so you can use offical yolov7 “ Swinv2Block”
-- "--aux_ota_loss" for aux- head only . Such "models/v7_cfg/training/yolov7x6x.yaml, (P6-model) ,you can create aux -head models.		
+- "--aux_ota_loss" for aux- head only . Such "models/detect/v7_cfg/training/yolov7x6x.yaml, (P6-model) ,you can create aux -head models.		
 - "ota_loss"  in hyps filse ,ota_loss default=0 
 </details>   
 
@@ -202,14 +208,14 @@ python train.py --data <your data yaml>  --cfg  <your model yaml> --weights <wei
 -  run yolov7-P5 model train and yolov5 seriese models ,scratch or fine ,your need a weights 
 
 ```bash 
-python train.py  --data data/coco128.yaml  --cfg models/yolov5s_decoupled.yaml   
+python train.py  --data data/coco128.yaml  --cfg models/detect/yolov5s_decoupled.yaml   
 ```
 ```bash 
-python train.py  --cfg  models/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets) --hyp data/hyps/hyp.scratch-v7.custom.yaml	
+python train.py  --cfg  models/detect/v7_cfg/training/yolov7.yaml  --weights yolov7.pt  --data (custom datasets) --hyp data/hyps/hyp.scratch-v7.custom.yaml	
 ```
 -  run yolov7-aux model train ,your model must P6-model !
 ```bash 
-python train.py  --cfg  models/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
+python train.py  --cfg  models/detect/v7_cfg/training/yolov7w6.yaml --imgsz 1280  --weights 'yolov7-w6_training.pt'  --data (custom datasets)  --aux_ota_loss  --hyp data/hyps/hyp.scratch-v7.custom.yaml
 ```
 - After training/under yaml structure, your initial weight xxx. PT will become a trained yolov7xxx.pt , with specific references to reparameterized scripts. 
 Then use the deploy model to load the weights of your training, change the index and structure to re-parameterize the model.
@@ -224,6 +230,20 @@ Then use the deploy model to load the weights of your training, change the index
 ```
 </details>
 
+/details>
+
+<details >
+<summary>Offical Model Zoo </summary>
+
+| Model                                                                                | size<br><sup>(pixels) | mAP<sup>val<br>50-95 | Speed<br><sup>CPU ONNX<br>(ms) | Speed<br><sup>A100 TensorRT<br>(ms) | params<br><sup>(M) | FLOPs<br><sup>(B) |
+| ------------------------------------------------------------------------------------ | --------------------- | -------------------- | ------------------------------ | ----------------------------------- | ------------------ | ----------------- |
+| [YOLOv8n](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt) | 640                   | 37.3                 | 80.4                           | 0.99                                | 3.2                | 8.7               |
+| [YOLOv8s](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8s.pt) | 640                   | 44.9                 | 128.4                          | 1.20                                | 11.2               | 28.6              |
+| [YOLOv8m](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8m.pt) | 640                   | 50.2                 | 234.7                          | 1.83                                | 25.9               | 78.9              |
+| [YOLOv8l](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8l.pt) | 640                   | 52.9                 | 375.2                          | 2.39                                | 43.7               | 165.2             |
+| [YOLOv8x](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8x.pt) | 640                   | 53.9                 | 479.1                          | 3.53                                | 68.2               | 257.8             |
+
+</details>
 
 ##  <div align="center">关键点检测篇</div>
 
@@ -296,7 +316,7 @@ YOLOv5 [release v6.2](https://github.com/ultralytics/yolov5/releases) brings sup
 
 We trained YOLOv5-cls classification models on ImageNet for 90 epochs using a 4xA100 instance, and we trained ResNet and EfficientNet models alongside with the same default training settings to compare. We exported all models to ONNX FP32 for CPU speed tests and to TensorRT FP16 for GPU speed tests. We ran all speed tests on Google [Colab Pro](https://colab.research.google.com/signup) for easy reproducibility.
 
-| Model                                                                                              | size<br><sup>(pixels) | acc<br><sup>top1 | acc<br><sup>top5 | Training<br><sup>90 epochs<br>4xA100 (hours) | Speed<br><sup>ONNX CPU<br>(ms) | Speed<br><sup>TensorRT V100<br>(ms) | params<br><sup>(M) | FLOPs<br><sup>@224 (B) |
+| Offcial Model Zoo                                                                                  | size<br><sup>(pixels) | acc<br><sup>top1 | acc<br><sup>top5 | Training<br><sup>90 epochs<br>4xA100 (hours) | Speed<br><sup>ONNX CPU<br>(ms) | Speed<br><sup>TensorRT V100<br>(ms) | params<br><sup>(M) | FLOPs<br><sup>@224 (B) |
 |----------------------------------------------------------------------------------------------------|-----------------------|------------------|------------------|----------------------------------------------|--------------------------------|-------------------------------------|--------------------|------------------------|
 | [YOLOv5n-cls](https://github.com/ultralytics/yolov5/releases/download/v6.2/yolov5n-cls.pt)         | 224                   | 64.6             | 85.4             | 7:59                                         | **3.3**                        | **0.5**                             | **2.5**            | **0.5**                |
 | [YOLOv5s-cls](https://github.com/ultralytics/yolov5/releases/download/v6.2/yolov5s-cls.pt)         | 224                   | 71.5             | 90.2             | 8:09                                         | 6.6                            | 0.6                                 | 5.4                | 1.4                    |
@@ -426,6 +446,7 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 ## Acknowledgements
 
 <details><summary> <b>Expand</b> </summary>
+
 * [https://github.com/ultralytics/ultralytics](https://github.com/ultralytics/ultralytics)
 * [https://github.com/WongKinYiu/yolov7](https://github.com/WongKinYiu/yolov7)
 * [https://github.com/ultralytics/yolov5](https://github.com/ultralytics/yolov5)
