@@ -50,7 +50,7 @@ yolo_research
 │   └─────   cls         分类模型结构
 │            pose        关键点模型结构
 │            segment     分割模型结构
-│            detect  v5U_cfg/v7——cfg/v8_cfg    检测模型结构..其余是V5版本以及一些改的参考示例      
+│            detect  v5u_cfg/v7_cfg/v8_cfg    检测模型结构..其余是V5版本以及一些改的参考示例      
 │   ....
 │   segment
 │   └─────   ## 分割任务
@@ -80,7 +80,7 @@ yolo_research
 
 # Feature 🚀 
 
-     - 以最新的yoloV5工程风格代码融合，加入V8部分, 针对High-level任务：完成先进的检测器、跟踪器、分类器、分割、关键点检测功能任务集成，删除额外的三方库依赖
+     - 以最新的yoloV5工程风格代码融合，加入V8部分,兼容了anchor-free的v8结构，针对High-level任务：完成先进的检测器、跟踪器、分类器、分割、关键点检测功能任务集成，删除额外的三方库依赖
      
      - 实时的v5代码更新改动&&v7等work的结构适配（每周同步yolov5的代码优化）
      
