@@ -7,7 +7,7 @@ try:
     from clearml import Task
 
     assert clearml.__version__  # verify package is not directory
-except (ImportError, AssertionError):
+except (ImportError, AssertionError,AttributeError):
     clearml = None
 
 

@@ -25,6 +25,7 @@ from pathlib import Path
 from subprocess import check_output
 from typing import Optional
 from zipfile import ZipFile
+from typing import Union
 
 import cv2
 import numpy as np
@@ -42,11 +43,11 @@ from utils.metrics import box_iou, fitness
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 RANK = int(os.getenv('RANK', -1))
-
+__version__="YOlO_Reasearch_Plus"
 # Settings
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
-DATASETS_DIR = Path(os.getenv('YOLOv_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
-AUTOINSTALL = str(os.getenv('YOLOv_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
+DATASETS_DIR = Path(os.getenv('YOLO_RESEARCH_DIR', ROOT.parent / 'datasets'))  # global datasets directory
+AUTOINSTALL = str(os.getenv('YOLO_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLO_Research_VERBOSE', True)).lower() == 'true'  # global verbose mode
 TQDM_BAR_FORMAT = '{l_bar}{bar:10}| {n_fmt}/{total_fmt} {elapsed}'  # tqdm bar format   
 FONT = 'Arial.ttf'  # https://ultralytics.com/assets/Arial.ttf
@@ -60,7 +61,21 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['OMP_NUM_THREADS'] = '1' if platform.system() == 'darwin' else str(NUM_THREADS)
 
 
-
+def check_class_names(names):
+    # Check class names. Map imagenet class codes to human-readable names if required. Convert lists to dicts.
+    if isinstance(names, list):  # names is a list
+        names = dict(enumerate(names))  # convert to dict
+    if isinstance(names, dict):
+        # convert 1) string keys to int, i.e. '0' to 0, and non-string values to strings, i.e. True to 'True'
+        names = {int(k): str(v) for k, v in names.items()}
+        n = len(names)
+        if max(names.keys()) >= n:
+            raise KeyError(f'{n}-class dataset requires class indices 0-{n - 1}, but you have invalid class indices '
+                           f'{min(names.keys())}-{max(names.keys())} defined in your dataset YAML.')
+        if isinstance(names[0], str) and names[0].startswith('n0'):  # imagenet class codes, i.e. 'n01440764'
+            map = yaml_load(ROOT / 'datasets/ImageNet.yaml')['map']  # human-readable names
+            names = {k: map[v] for k, v in names.items()}
+    return names
 
 def is_kaggle():
     # Is environment a Kaggle Notebook?
@@ -1604,7 +1619,7 @@ def non_max_suppression_export(prediction, conf_thres=0.25, iou_thres=0.45, clas
         output[xi] = x[i]
     return output
 
-def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()
+def strip_optimizer(f: Union[str, Path] = 'best.pt', s=''):  # from utils.general import *; strip_optimizer()
     # Strip optimizer from 'f' to finalize training, optionally save as 's'
     x = torch.load(f, map_location=torch.device('cpu'))
     if x.get('ema'):

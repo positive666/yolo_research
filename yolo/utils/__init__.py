@@ -22,11 +22,15 @@ import torch
 import yaml
 
 # Constants
-__version__="YOlO_Reasearch_Plus"
+# PyTorch Multi-GPU DDP Constants
+RANK = int(os.getenv('RANK', -1))
+LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
+WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
+
+# Other Constants
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[2]  # YOLO
 DEFAULT_CFG_PATH = ROOT / "yolo/cfg/default.yaml"
-RANK = int(os.getenv('RANK', -1))
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
 AUTOINSTALL = str(os.getenv('YOLO_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
 VERBOSE = str(os.getenv('YOLO_VERBOSE', True)).lower() == 'true'  # global verbose mode
@@ -92,12 +96,42 @@ HELP_MSG = \
     """
 
 # Settings
-torch.set_printoptions(linewidth=320, precision=5, profile='long')
+torch.set_printoptions(linewidth=320, precision=4, profile='default')
 np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format})  # format short g, %precision=5
 pd.options.display.max_columns = 10
 cv2.setNumThreads(0)  # prevent OpenCV from multithreading (incompatible with PyTorch DataLoader)
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_THREADS)  # NumExpr max threads
 os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # for deterministic training
+
+
+class SimpleClass:
+    """
+    Ultralytics SimpleClass is a base class providing helpful string representation, error reporting, and attribute
+    access methods for easier debugging and usage.
+    """
+
+    def __str__(self):
+        """Return a human-readable string representation of the object."""
+        attr = []
+        for a in dir(self):
+            v = getattr(self, a)
+            if not callable(v) and not a.startswith('__'):
+                if isinstance(v, SimpleClass):
+                    # Display only the module and class name for subclasses
+                    s = f'{a}: {v.__module__}.{v.__class__.__name__} object'
+                else:
+                    s = f'{a}: {repr(v)}'
+                attr.append(s)
+        return f'{self.__module__}.{self.__class__.__name__} object with attributes:\n\n' + '\n'.join(attr)
+
+    def __repr__(self):
+        """Return a machine-readable string representation of the object."""
+        return self.__str__()
+
+    def __getattr__(self, attr):
+        """Custom attribute access error message with helpful information."""
+        name = self.__class__.__name__
+        raise AttributeError(f"'{name}' object has no attribute '{attr}'. See valid attributes below.\n{self.__doc__}")
 
 
 class IterableSimpleNamespace(SimpleNamespace):

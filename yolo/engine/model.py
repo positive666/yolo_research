@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import List
+from typing import Union
 
 from yolo import v8
 from models.yolo import (ClassificationModel, DetectionModel, SegmentationModel,
@@ -37,7 +37,7 @@ class YOLO:
     A python interface which emulates a model-like behaviour by wrapping trainers.
     """
 
-    def __init__(self, model='yolov8n.pt', task=None, session=None) -> None:
+    def __init__(self, model:Union[str,Path]= 'yolov8n.pt', task=None, session=None) -> None:
         """
     YOLO (You Only Look Once) object detection model.
 
@@ -89,7 +89,7 @@ class YOLO:
         self.session = session  # HUB session
 
         # Load or create new YOLO model
-        load_methods = {'.pt': self._load, '.yaml': self._new}
+        model = str(model).strip()
         suffix = Path(model).suffix
         if not suffix and Path(model).stem in GITHUB_ASSET_STEMS:
             model, suffix = Path(model).with_suffix('.pt'), '.pt'  # add suffix, i.e. yolov8n -> yolov8n.pt

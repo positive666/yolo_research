@@ -110,6 +110,7 @@ class BasePredictor:
 
     @smart_inference_mode()
     def __call__(self, source=None, model=None, stream=False):
+        self.stream=stream
         if stream:
             return self.stream_inference(source, model)
         else:
@@ -130,6 +131,10 @@ class BasePredictor:
                                              stride=self.model.stride,
                                              auto=self.model.pt)
         self.source_type = self.dataset.source_type
+        if not getattr(self, 'stream', True) and (self.dataset.mode == 'stream' or  # streams
+                                                  len(self.dataset) > 1000 or  # images
+                                                  any(getattr(self.dataset, 'video_flag', [False]))):  # videos
+            LOGGER.warning(STREAM_WARNING)
         self.vid_path, self.vid_writer = [None] * self.dataset.bs, [None] * self.dataset.bs
 
     def stream_inference(self, source=None, model=None):

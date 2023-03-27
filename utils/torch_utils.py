@@ -17,13 +17,17 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from utils.general import LOGGER, check_version, colorstr, file_date, git_describe
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
+
+TORCH_1_9 = check_version(torch.__version__, '1.9.0')
+TORCH_1_11 = check_version(torch.__version__, '1.11.0')
+TORCH_1_12 = check_version(torch.__version__, '1.12.0')
+TORCH_2_X = check_version(torch.__version__, minimum='2.0')
 
 try:
     import thop  # for FLOPs computationf

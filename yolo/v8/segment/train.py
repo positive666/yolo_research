@@ -121,11 +121,11 @@ class SegLoss(Loss):
                     loss[1] += self.single_mask_loss(gt_mask, pred_masks[i][fg_mask[i]], proto[i], mxyxy,
                                                      marea)  # seg loss
         # WARNING: Uncomment lines below in case of Multi-GPU DDP unused gradient errors
-        #         else:
-        #             loss[1] += proto.sum() * 0
-        # else:
-        #     loss[1] += proto.sum() * 0
-
+                else:
+                    loss[1] += (proto * 0).sum() + (pred_masks * 0).sum()  # inf sums may lead to nan loss
+        else:
+            loss[1] += (proto * 0).sum() + (pred_masks * 0).sum()  # inf sums may lead to nan loss
+            
         loss[0] *= self.hyp.box  # box gain
         loss[1] *= self.hyp.box / batch_size  # seg gain
         loss[2] *= self.hyp.cls  # cls gain

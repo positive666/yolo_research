@@ -1,17 +1,23 @@
 # Ultralytics YOLO 🚀, GPL-3.0 license
-
+from yolo.utils import LOGGER, TESTS_RUNNING
 from utils.torch_utils import get_flops, get_num_params
 
 try:
     import comet_ml
 
-except ImportError:
+    assert not TESTS_RUNNING  # do not log pytest
+    assert comet_ml.__version__  # verify package is not directory
+except (ImportError, AssertionError, AttributeError):
     comet_ml = None
 
 
 def on_pretrain_routine_start(trainer):
-    experiment = comet_ml.Experiment(project_name=trainer.args.project or "YOLOv8")
-    experiment.log_parameters(vars(trainer.args))
+    try:
+        experiment = comet_ml.Experiment(project_name=trainer.args.project or 'YOLOv8')
+        experiment.set_name(trainer.args.name)
+        experiment.log_parameters(vars(trainer.args))
+    except Exception as e:
+        LOGGER.warning(f'WARNING ⚠️ Comet installed but not initialized correctly, not logging this run. {e}')
 
 
 def on_train_epoch_end(trainer):

@@ -1340,7 +1340,8 @@ class SegmentationModel(DetectionModel):
     # YOLOv5 segmentation model
     def __init__(self, cfg='yolov5s-seg.yaml', ch=3, nc=None, anchors=None):
         super().__init__(cfg, ch, nc, anchors)
-
+    def _forward_augment(self, x):
+        raise NotImplementedError(('WARNING segmentationModel has not supported augment inference yet!!'))
 class kP_DetectionModel(BaseModel):
     def __init__(self, cfg='pose/cfg/yolov5s.yaml', ch=3, nc=1, anchors=None, num_coords=17, autobalance=False):  # model, input channels, number of classes
         super().__init__()

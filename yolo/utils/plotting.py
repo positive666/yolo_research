@@ -18,6 +18,9 @@ from .checks import check_font, check_version, is_ascii
 from .files import increment_path
 from .ops import clip_coords, scale_image, xywh2xyxy, xyxy2xywh
 
+matplotlib.rc('font', **{'size': 11})
+matplotlib.use('Agg')  # for writing to files only
+
 
 class Colors:
     # Ultralytics color palette https://ultralytics.com/
@@ -109,6 +112,8 @@ class Annotator:
             self.im = np.asarray(self.im).copy()
         if len(masks) == 0:
             self.im[:] = im_gpu.permute(1, 2, 0).contiguous().cpu().numpy() * 255
+        if im_gpu.device != masks.device:
+            im_gpu = im_gpu.to(masks.device)    
         colors = torch.tensor(colors, device=im_gpu.device, dtype=torch.float32) / 255.0
         colors = colors[:, None, None]  # shape(n,1,1,3)
         masks = masks.unsqueeze(3)  # shape(n,h,w,1)
@@ -136,7 +141,11 @@ class Annotator:
         if anchor == 'bottom':  # start y from font bottom
             w, h = self.font.getsize(text)  # text width, height
             xy[1] += 1 - h
-        self.draw.text(xy, text, fill=txt_color, font=self.font)
+        if self.pil:
+            self.draw.text(xy, text, fill=txt_color, font=self.font)
+        else:
+            tf = max(self.lw - 1, 1)  # font thickness
+            cv2.putText(self.im, text, xy, 0, self.lw / 3, txt_color, thickness=tf, lineType=cv2.LINE_AA)
 
     def fromarray(self, im):
         # Update self.im from a numpy array
@@ -148,22 +157,62 @@ class Annotator:
         return np.asarray(self.im)
 
 
-def save_one_box(xyxy, im, file=Path('im.jpg'), gain=1.02, pad=10, square=False, BGR=False, save=True):
-    # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
-    xyxy = torch.tensor(xyxy).view(-1, 4)
-    b = xyxy2xywh(xyxy)  # boxes
-    if square:
-        b[:, 2:] = b[:, 2:].max(1)[0].unsqueeze(1)  # attempt rectangle to square
-    b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
-    xyxy = xywh2xyxy(b).long()
-    clip_coords(xyxy, im.shape)
-    crop = im[int(xyxy[0, 1]):int(xyxy[0, 3]), int(xyxy[0, 0]):int(xyxy[0, 2]), ::(1 if BGR else -1)]
-    if save:
-        file.parent.mkdir(parents=True, exist_ok=True)  # make directory
-        f = str(increment_path(file).with_suffix('.jpg'))
-        # cv2.imwrite(f, crop)  # save BGR, https://github.com/ultralytics/yolov5/issues/7007 chroma subsampling issue
-        Image.fromarray(crop[..., ::-1]).save(f, quality=95, subsampling=0)  # save RGB
-    return crop
+    @TryExcept()  # known issue https://github.com/ultralytics/yolov5/issues/5395
+    def plot_labels(boxes, cls, names=(), save_dir=Path('')):
+        import pandas as pd
+        import seaborn as sn
+        # plot dataset labels
+        LOGGER.info(f"Plotting labels to {save_dir / 'labels.jpg'}... ")
+        b = boxes.transpose()  # classes, boxes
+        nc = int(cls.max() + 1)  # number of classes
+        x = pd.DataFrame(b.transpose(), columns=['x', 'y', 'width', 'height'])
+        # seaborn correlogram
+        sn.pairplot(x, corner=True, diag_kind='auto', kind='hist', diag_kws=dict(bins=50), plot_kws=dict(pmax=0.9))
+        plt.savefig(save_dir / 'labels_correlogram.jpg', dpi=200)
+        plt.close()
+        # matplotlib labels
+        matplotlib.use('svg')  # faster
+        ax = plt.subplots(2, 2, figsize=(8, 8), tight_layout=True)[1].ravel()
+        y = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
+        with contextlib.suppress(Exception):  # color histogram bars by class
+            [y[2].patches[i].set_color([x / 255 for x in colors(i)]) for i in range(nc)]  # known issue #3195
+        ax[0].set_ylabel('instances')
+        if 0 < len(names) < 30:
+            ax[0].set_xticks(range(len(names)))
+            ax[0].set_xticklabels(list(names.values()), rotation=90, fontsize=10)
+        else:
+            ax[0].set_xlabel('classes')
+        sn.histplot(x, x='x', y='y', ax=ax[2], bins=50, pmax=0.9)
+        sn.histplot(x, x='width', y='height', ax=ax[3], bins=50, pmax=0.9)
+        # rectangles
+        boxes[:, 0:2] = 0.5  # center
+        boxes = xywh2xyxy(boxes) * 2000
+        img = Image.fromarray(np.ones((2000, 2000, 3), dtype=np.uint8) * 255)
+        for cls, box in zip(cls[:1000], boxes[:1000]):
+            ImageDraw.Draw(img).rectangle(box, width=1, outline=colors(cls))  # plot
+        ax[1].imshow(img)
+        ax[1].axis('off')
+        for a in [0, 1, 2, 3]:
+            for s in ['top', 'right', 'left', 'bottom']:
+                ax[a].spines[s].set_visible(False)
+        plt.savefig(save_dir / 'labels.jpg', dpi=200)
+        matplotlib.use('Agg')
+        plt.close()
+    def save_one_box(xyxy, im, file=Path('im.jpg'), gain=1.02, pad=10, square=False, BGR=False, save=True):
+        # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
+        b = xyxy2xywh(xyxy.view(-1, 4))  # boxes
+        if square:
+            b[:, 2:] = b[:, 2:].max(1)[0].unsqueeze(1)  # attempt rectangle to square
+        b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
+        xyxy = xywh2xyxy(b).long()
+        clip_coords(xyxy, im.shape)
+        crop = im[int(xyxy[0, 1]):int(xyxy[0, 3]), int(xyxy[0, 0]):int(xyxy[0, 2]), ::(1 if BGR else -1)]
+        if save:
+            file.parent.mkdir(parents=True, exist_ok=True)  # make directory
+            f = str(increment_path(file).with_suffix('.jpg'))
+            # cv2.imwrite(f, crop)  # save BGR, https://github.com/ultralytics/yolov5/issues/7007 chroma subsampling issue
+            Image.fromarray(crop[..., ::-1]).save(f, quality=95, subsampling=0)  # save RGB
+        return crop
 
 
 @threaded
@@ -238,7 +287,7 @@ def plot_images(images,
             for j, box in enumerate(boxes.T.tolist()):
                 c = classes[j]
                 color = colors(c)
-                c = names[c] if names else c
+                c = names.get(c, c) if names else c
                 if labels or conf[j] > 0.25:  # 0.25 conf thresh
                     label = f'{c}' if labels else f'{c} {conf[j]:.1f}'
                     annotator.box_label(box, label, color=color)
