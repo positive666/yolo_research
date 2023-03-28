@@ -1077,12 +1077,11 @@ class GhostModuleV2(nn.Module):
             )
  
     def forward(self, x):
-        print("check ghostv2 input size:",x.size())
+        #print("check ghostv2 input size:",x.size())
         if self.mode in ['original']:
             x1 = self.primary_conv(x)
             x2 = self.cheap_operation(x1)
             out = torch.cat([x1, x2], dim=1)
-            print("check ghostv2 input size:",out[:, :self.oup, :, :].size())
             return out[:, :self.oup, :, :]
         elif self.mode in ['attn']:
             res = self.short_conv(F.avg_pool2d(x, kernel_size=2, stride=2))
@@ -1091,7 +1090,6 @@ class GhostModuleV2(nn.Module):
             out = torch.cat([x1, x2], dim=1)
             out=out[:, :self.oup, :, :] * F.interpolate(self.gate_fn(res), size=(out.shape[-2], out.shape[-1]),
                                                            mode='nearest')
-            print("check ghostv2 output size:",out.size())
             return out
 
 class GhostBottleneckV2(nn.Module): 
