@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torchvision.transforms.functional as F
 
-from yolo.utils import LOGGER,  , ops
+from yolo.utils import LOGGER,SimpleClass, ops
 from yolo.utils.plotting import Annotator, colors
 
 
@@ -297,6 +297,6 @@ class Masks(SimpleClass):
 
     def __len__(self):  # override len(results)
         return len(self.masks)
-        
+
     def __getitem__(self, idx):
         return Masks(self.masks[idx], self.orig_shape)

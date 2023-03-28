@@ -22,7 +22,6 @@ from .utils import PIN_MEMORY
 
 class InfiniteDataLoader(dataloader.DataLoader):
     """Dataloader that reuses workers
-
     Uses same syntax as vanilla DataLoader
     """
 
@@ -41,7 +40,6 @@ class InfiniteDataLoader(dataloader.DataLoader):
 
 class _RepeatSampler:
     """Sampler that repeats forever
-
     Args:
         sampler (Sampler)
     """
@@ -65,7 +63,7 @@ def build_dataloader(cfg, batch, img_path, stride=32, rect=False, names=None, ra
     assert mode in ['train', 'val']
     shuffle = mode == 'train'
     if cfg.rect and shuffle:
-        LOGGER.warning("WARNING тЪая╕П 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
+        LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
         shuffle = False
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
         dataset = YOLODataset(
@@ -82,7 +80,8 @@ def build_dataloader(cfg, batch, img_path, stride=32, rect=False, names=None, ra
             prefix=colorstr(f'{mode}: '),
             use_segments=cfg.task == 'segment',
             use_keypoints=cfg.task == 'keypoint',
-            names=names)
+            names=names,
+            classes=cfg.classes)
 
     batch = min(batch, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
@@ -133,7 +132,7 @@ def build_classification_dataloader(path,
 
 
 def check_source(source):
-    webcam, screenshot, from_img, in_memory = False, False, False, False
+    webcam, screenshot, from_img, in_memory, tensor = False, False, False, False, False
     if isinstance(source, (str, int, Path)):  # int for local usb camera
         source = str(source)
         is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -149,22 +148,25 @@ def check_source(source):
         from_img = True
     elif isinstance(source, (Image.Image, np.ndarray)):
         from_img = True
+    elif isinstance(source, torch.Tensor):
+        tensor = True
     else:
-        raise TypeError('Unsupported image type. See docs for supported types https://docs.ultralytics.com/predict')
+        raise TypeError('Unsupported image type. For supported types see https://docs.ultralytics.com/modes/predict')
 
-    return source, webcam, screenshot, from_img, in_memory
+    return source, webcam, screenshot, from_img, in_memory, tensor
 
 
 def load_inference_source(source=None, transforms=None, imgsz=640, vid_stride=1, stride=32, auto=True):
     """
     TODO: docs
     """
-    # source
-    source, webcam, screenshot, from_img, in_memory = check_source(source)
-    source_type = source.source_type if in_memory else SourceTypes(webcam, screenshot, from_img)
+    source, webcam, screenshot, from_img, in_memory, tensor = check_source(source)
+    source_type = source.source_type if in_memory else SourceTypes(webcam, screenshot, from_img, tensor)
 
     # Dataloader
-    if in_memory:
+    if tensor:
+        dataset = LoadTensor(source)
+    elif in_memory:
         dataset = source
     elif webcam:
         dataset = LoadStreams(source,

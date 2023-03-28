@@ -21,12 +21,13 @@ import pandas as pd
 import torch
 import yaml
 
+#from yolo import __version__
 # Constants
 # PyTorch Multi-GPU DDP Constants
 RANK = int(os.getenv('RANK', -1))
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
-
+__version__='8.0.58'
 # Other Constants
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[2]  # YOLO

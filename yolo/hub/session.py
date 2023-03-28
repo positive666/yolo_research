@@ -5,7 +5,7 @@ from time import sleep
 
 import requests
 
-from hub.utils import HUB_API_ROOT, check_dataset_disk_space, smart_request,__version__
+from yolo.hub.utils import HUB_API_ROOT, check_dataset_disk_space, smart_request,__version__
 from yolo.utils import is_colab, threaded
 
 AGENT_NAME = f'python-{__version__}-colab' if is_colab() else f'python-{__version__}-local'

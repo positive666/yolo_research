@@ -9,8 +9,8 @@ from yolo import v8
 from yolo.data import build_classification_dataloader
 from yolo.engine.trainer import BaseTrainer
 from yolo.utils import DEFAULT_CFG, LOGGER, RANK, colorstr
-from utils.torch_utils import is_parallel, strip_optimizer
-
+from utils.torch_utils import is_parallel
+from utils.general import strip_optimizer
 
 class ClassificationTrainer(BaseTrainer):
 

@@ -10,9 +10,9 @@ from yolo.data import build_dataloader
 from yolo.data.dataloaders.v5loader import create_dataloader
 from yolo.engine.validator import BaseValidator
 from yolo.utils import DEFAULT_CFG, LOGGER, colorstr, ops
-from utils.checks import check_requirements
-from utils.metrics import ConfusionMatrix, DetMetrics, box_iou
-from utils.plotting import output_to_target, plot_images
+from yolo.utils.checks import check_requirements
+from yolo.utils.metrics import ConfusionMatrix, DetMetrics, box_iou
+from yolo.utils.plotting import output_to_target, plot_images
 from utils.torch_utils import de_parallel
 
 

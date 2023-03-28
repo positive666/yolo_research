@@ -1,9 +1,10 @@
 # Ultralytics YOLO 🚀, GPL-3.0 license
-import sys
 from copy import copy
 
+import numpy as np
 import torch
 import torch.nn as nn
+
 import sys
 sys.path.append("F:\\git_code\\yolov5_research\\")
 from yolo import v8
@@ -11,10 +12,10 @@ from models.yolo import DetectionModel
 from yolo.data import build_dataloader
 from yolo.data.dataloaders.v5loader import create_dataloader
 from yolo.engine.trainer import BaseTrainer
-from yolo.utils import DEFAULT_CFG, colorstr
+from yolo.utils import DEFAULT_CFG, RANK, colorstr
 from utils.loss import BboxLoss
 from yolo.utils.ops import xywh2xyxy
-from yolo.utils.plotting import plot_images, plot_results
+from yolo.utils.plotting import plot_images, plot_results,plot_labels
 from utils.tal import TaskAlignedAssigner, dist2bbox, make_anchors
 from utils.torch_utils import de_parallel
 
@@ -22,7 +23,7 @@ from utils.torch_utils import de_parallel
 # BaseTrainer python usage
 class DetectionTrainer(BaseTrainer):
 
-    def get_dataloader(self, dataset_path, batch_size, mode="train", rank=0):
+    def get_dataloader(self, dataset_path, batch_size, mode='train', rank=0):
         # TODO: manage splits differently
         # calculate stride - check if model is initialized
         gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
@@ -31,21 +32,21 @@ class DetectionTrainer(BaseTrainer):
                                  batch_size=batch_size,
                                  stride=gs,
                                  hyp=vars(self.args),
-                                 augment=mode == "train",
+                                 augment=mode == 'train',
                                  cache=self.args.cache,
-                                 pad=0 if mode == "train" else 0.5,
-                                 rect=self.args.rect or mode == "val",
+                                 pad=0 if mode == 'train' else 0.5,
+                                 rect=self.args.rect or mode == 'val',
                                  rank=rank,
                                  workers=self.args.workers,
                                  close_mosaic=self.args.close_mosaic != 0,
                                  prefix=colorstr(f'{mode}: '),
-                                 shuffle=mode == "train",
+                                 shuffle=mode == 'train',
                                  seed=self.args.seed)[0] if self.args.v5loader else \
             build_dataloader(self.args, batch_size, img_path=dataset_path, stride=gs, rank=rank, mode=mode,
-                             rect=mode == "val")[0]
+                             rect=mode == 'val', names=self.data['names'])[0]
 
     def preprocess_batch(self, batch):
-        batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
+        batch['img'] = batch['img'].to(self.device, non_blocking=True).float() / 255
         return batch
 
     def set_model_attributes(self):
@@ -53,17 +54,15 @@ class DetectionTrainer(BaseTrainer):
         # self.args.box *= 3 / nl  # scale to layers
         # self.args.cls *= self.data["nc"] / 80 * 3 / nl  # scale to classes and layers
         # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-        self.model.nc = self.data["nc"]  # attach number of classes to model
-        self.model.names = self.data["names"]  # attach class names to model
+        self.model.nc = self.data['nc']  # attach number of classes to model
+        self.model.names = self.data['names']  # attach class names to model
         self.model.args = self.args  # attach hyperparameters to model
         # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
 
     def get_model(self, cfg=None, weights=None, verbose=True):
-        model = DetectionModel(cfg, ch=3, nc=self.data["nc"], verbose=verbose)
+        model = DetectionModel(cfg, nc=self.data['nc'], verbose=verbose and RANK == -1)
         if weights:
-            print("load")
             model.load(weights)
-
         return model
 
     def get_validator(self):
@@ -75,12 +74,12 @@ class DetectionTrainer(BaseTrainer):
             self.compute_loss = Loss(de_parallel(self.model))
         return self.compute_loss(preds, batch)
 
-    def label_loss_items(self, loss_items=None, prefix="train"):
+    def label_loss_items(self, loss_items=None, prefix='train'):
         """
         Returns a loss dict with labelled training loss items tensor
         """
         # Not needed for classification but necessary for segmentation & detection
-        keys = [f"{prefix}/{x}" for x in self.loss_names]
+        keys = [f'{prefix}/{x}' for x in self.loss_names]
         if loss_items is not None:
             loss_items = [round(float(x), 5) for x in loss_items]  # convert tensors to 5 decimal place floats
             return dict(zip(keys, loss_items))
@@ -92,15 +91,20 @@ class DetectionTrainer(BaseTrainer):
                 (4 + len(self.loss_names))) % ('Epoch', 'GPU_mem', *self.loss_names, 'Instances', 'Size')
 
     def plot_training_samples(self, batch, ni):
-        plot_images(images=batch["img"],
-                    batch_idx=batch["batch_idx"],
-                    cls=batch["cls"].squeeze(-1),
-                    bboxes=batch["bboxes"],
-                    paths=batch["im_file"],
-                    fname=self.save_dir / f"train_batch{ni}.jpg")
+        plot_images(images=batch['img'],
+                    batch_idx=batch['batch_idx'],
+                    cls=batch['cls'].squeeze(-1),
+                    bboxes=batch['bboxes'],
+                    paths=batch['im_file'],
+                    fname=self.save_dir / f'train_batch{ni}.jpg')
 
     def plot_metrics(self):
         plot_results(file=self.csv)  # save results.png
+
+    def plot_training_labels(self):
+        boxes = np.concatenate([lb['bboxes'] for lb in self.train_loader.dataset.labels], 0)
+        cls = np.concatenate([lb['cls'] for lb in self.train_loader.dataset.labels], 0)
+        plot_labels(boxes, cls.squeeze(), names=self.data['names'], save_dir=self.save_dir)
 
 
 # Criterion class for computing training losses
@@ -121,13 +125,8 @@ class Loss:
         self.device = device
 
         self.use_dfl = m.reg_max > 1
-        roll_out_thr = h.min_memory if h.min_memory > 1 else 64 if h.min_memory else 0  # 64 is default
 
-        self.assigner = TaskAlignedAssigner(topk=10,
-                                            num_classes=self.nc,
-                                            alpha=0.5,
-                                            beta=6.0,
-                                            roll_out_thr=roll_out_thr)
+        self.assigner = TaskAlignedAssigner(topk=10, num_classes=self.nc, alpha=0.5, beta=6.0)
         self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
@@ -137,6 +136,7 @@ class Loss:
         else:
             i = targets[:, 0]  # image index
             _, counts = i.unique(return_counts=True)
+            counts = counts.to(dtype=torch.int32)
             out = torch.zeros(batch_size, counts.max(), 5, device=self.device)
             for j in range(batch_size):
                 matches = i == j
@@ -153,6 +153,7 @@ class Loss:
             # pred_dist = pred_dist.view(b, a, c // 4, 4).transpose(2,3).softmax(3).matmul(self.proj.type(pred_dist.dtype))
             # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
         return dist2bbox(pred_dist, anchor_points, xywh=False)
+
 
     def __call__(self, preds, batch):
         loss = torch.zeros(3, device=self.device)  # box, cls, dfl

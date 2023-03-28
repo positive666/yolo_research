@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 import cv2
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,7 +13,7 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 from PIL import __version__ as pil_version
 
-from yolo.utils import threaded
+from yolo.utils import LOGGER,TryExcept,threaded
 
 from .checks import check_font, check_version, is_ascii
 from .files import increment_path
@@ -157,8 +158,8 @@ class Annotator:
         return np.asarray(self.im)
 
 
-    @TryExcept()  # known issue https://github.com/ultralytics/yolov5/issues/5395
-    def plot_labels(boxes, cls, names=(), save_dir=Path('')):
+@TryExcept()  # known issue https://github.com/ultralytics/yolov5/issues/5395
+def plot_labels(boxes, cls, names=(), save_dir=Path('')):
         import pandas as pd
         import seaborn as sn
         # plot dataset labels
@@ -198,7 +199,7 @@ class Annotator:
         plt.savefig(save_dir / 'labels.jpg', dpi=200)
         matplotlib.use('Agg')
         plt.close()
-    def save_one_box(xyxy, im, file=Path('im.jpg'), gain=1.02, pad=10, square=False, BGR=False, save=True):
+def save_one_box(xyxy, im, file=Path('im.jpg'), gain=1.02, pad=10, square=False, BGR=False, save=True):
         # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
         b = xyxy2xywh(xyxy.view(-1, 4))  # boxes
         if square:

@@ -2,7 +2,7 @@
 
 import requests
 
-from hub.utils import HUB_API_ROOT, request_with_credentials
+from yolo.hub.utils import HUB_API_ROOT, request_with_credentials
 from yolo.utils import is_colab
 
 API_KEY_PATH = "https://hub.ultralytics.com/settings?tab=api+keys"

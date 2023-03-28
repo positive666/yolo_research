@@ -17,6 +17,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.cuda import amp
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -25,7 +26,7 @@ from tqdm import tqdm
 from models.experimental import attempt_load_one_weight, attempt_load_weights
 from yolo.cfg import get_cfg
 from yolo.data.utils import check_cls_dataset, check_det_dataset
-from yolo.utils import (DEFAULT_CFG, LOGGER, RANK,ROOT, SETTINGS, TQDM_BAR_FORMAT, __version__,callbacks, colorstr, emojis,
+from yolo.utils import (DEFAULT_CFG, LOGGER, ONLINE,RANK, ROOT, SETTINGS, TQDM_BAR_FORMAT, __version__,callbacks, colorstr, emojis,
                                     yaml_save)
 from utils.autobatch import check_train_batch_size
 from yolo.utils.checks import check_file, check_imgsz, print_args
@@ -36,13 +37,10 @@ from utils.torch_utils import EarlyStopping, ModelEMA, de_parallel,select_device
 
 
 
-
 class BaseTrainer:
     """
     BaseTrainer
-
     A base class for creating trainers.
-
     Attributes:
         args (SimpleNamespace): Configuration for the trainer.
         check_resume (method): Method to check if training should be resumed from a saved checkpoint.
@@ -77,7 +75,6 @@ class BaseTrainer:
     def __init__(self, cfg=DEFAULT_CFG, overrides=None):
         """
         Initializes the BaseTrainer class.
-
         Args:
             cfg (str, optional): Path to a configuration file. Defaults to DEFAULT_CFG.
             overrides (dict, optional): Configuration overrides. Defaults to None.
@@ -113,8 +110,6 @@ class BaseTrainer:
             print_args(vars(self.args))
 
         # Device
-        self.amp = self.device.type != 'cpu'
-        self.scaler = amp.GradScaler(enabled=self.amp)
         if self.device.type == 'cpu':
             self.args.workers = 0  # faster CPU training as time dominated by inference, not dataloading
 
@@ -128,7 +123,7 @@ class BaseTrainer:
                 if 'yaml_file' in self.data:
                     self.args.data = self.data['yaml_file']  # for validating 'yolo train data=url.zip' usage
         except Exception as e:
-            raise FileNotFoundError(emojis(f"Dataset '{self.args.data}' error ❌ {e}")) from e
+            raise RuntimeError(emojis(f"Dataset '{self.args.data}' error ❌ {e}")) from e
 
         self.trainset, self.testset = self.get_dataset(self.data)
         self.ema = None
@@ -210,8 +205,8 @@ class BaseTrainer:
         self.model = self.model.to(self.device)
         self.set_model_attributes()
         # Check AMP
-        self.amp = torch.tensor(True).to(self.device)
-        if RANK in (-1, 0):  # Single-GPU and DDP
+        self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
+        if self.amp and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)
             callbacks.default_callbacks = callbacks_backup  # restore callbacks
@@ -339,7 +334,7 @@ class BaseTrainer:
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
                 loss_len = self.tloss.shape[0] if len(self.tloss.size()) else 1
                 losses = self.tloss if loss_len > 1 else torch.unsqueeze(self.tloss, 0)
-                if RANK in {-1, 0}:
+                if RANK in (-1, 0):
                     pbar.set_description(
                         ('%11s' * 2 + '%11.4g' * (2 + loss_len)) %
                         (f'{epoch + 1}/{self.epochs}', mem, *losses, batch['cls'].shape[0], batch['img'].shape[-1]))
@@ -576,14 +571,12 @@ class BaseTrainer:
     def build_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
         """
         Builds an optimizer with the specified parameters and parameter groups.
-
         Args:
             model (nn.Module): model to optimize
             name (str): name of the optimizer to use
             lr (float): learning rate
             momentum (float): momentum
             decay (float): weight decay
-
         Returns:
             optimizer (torch.optim.Optimizer): the built optimizer
         """
@@ -614,6 +607,7 @@ class BaseTrainer:
                     f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias')
         return optimizer
 
+
 def check_amp(model):
     """
     This function checks the PyTorch Automatic Mixed Precision (AMP) functionality of a YOLOv8 model.
@@ -643,7 +637,7 @@ def check_amp(model):
     prefix = colorstr('AMP: ')
     LOGGER.info(f'{prefix}running Automatic Mixed Precision (AMP) checks with YOLOv8n...')
     try:
-        from yolo.engine.model import YOLO
+        from ultralytics import YOLO
         assert amp_allclose(YOLO('yolov8n.pt'), im)
         LOGGER.info(f'{prefix}checks passed ✅')
     except ConnectionError:

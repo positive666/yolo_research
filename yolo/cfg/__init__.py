@@ -10,7 +10,8 @@ from typing import Dict, List, Union
 
 
 from yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_PATH, LOGGER, PREFIX, ROOT,
-                                    USER_CONFIG_DIR, IterableSimpleNamespace, __version__,checks, colorstr, yaml_load, yaml_print)
+                                    USER_CONFIG_DIR, IterableSimpleNamespace,checks, colorstr, yaml_load, yaml_print)
+#from yolo import __version__
 
 CLI_HELP_MSG = \
     """
