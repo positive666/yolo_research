@@ -21,6 +21,8 @@
 更新升级中.. Add latest V8 core （工作繁忙，会不断更新优化，有问题挂issue）
 
 ### <div align="left">⭐新闻板块【实时更新/计划】</div>
+
+  - 2023/3/28 同步兼容了最新的V8代码更新：目前V8依赖于pip install ultralytics,我在代码更新中也发现了该问题，虽然本项目做了分离，但是仍然需要依赖中的ultralytics.nn 文件夹，不然可能会报错，这点官方的代码中也给出了说明后期会优化，我也会想办法解决，不过目前项目中的工作太多了，故如果报错还是要进行安装：pip install ultralytics
 	- 2023/3/1  add v8 core:春节期间看了下V8，由于近半年项目比较多也是耽误了好久(原版本是将V8的所有功能全部融合到了V5的代码中，和V8命令一样，但是训练的时候发生了问题，排查发现问题发生在V5的数据读取处理，所以暂时使用V8的训练结构代码，也便于区分)，然后抓紧时间不停更新；
 	- 2022/11/23 修复已知BUG，V7.0版本更新兼容，年底比较忙后续忙完业务会大更新
 	- 2022/10/20 修复适配V7结构和额外任务引起的一些代码问题，实时更新V5的代码优化部分，添加了工具grad_cam在tools目录。
@@ -79,8 +81,8 @@ yolo_research
 </details>
 
 # Feature 🚀 
-
-     - 以最新的yoloV5工程风格代码融合，加入V8部分,兼容了anchor-free的v8结构，针对High-level任务：完成先进的检测器、跟踪器、分类器、分割、关键点检测功能任务集成，删除额外的三方库依赖
+    
+     - 最新的yoloV5工程风格代码融合，支持自由定义搭配所有组件，加入V8部分,兼容了anchor-free的yolov8，针对High-level任务：完成先进的检测器、跟踪器、分类器、分割、关键点检测功能任务集成，逐步删除额外库依赖
      
      - 实时的v5代码更新改动&&v7等work的结构适配（每周同步yolov5的代码优化）
      
@@ -120,6 +122,8 @@ pip install -r requirements.txt  # install
 <details open>
 <summary>YOLOV8 install in conda env  and  offical command</summary>
 
+pip install ultralytics 
+
 if you pip install ultralytics,you can run offical command 
 ```bash
 yolo task=detect    mode=train   data=<data.yaml path>      model=yolov8n.pt        args...
@@ -131,7 +135,7 @@ ps: if your model=*.yaml -->scratch else use pretrained models
 python command :
 
 
-if use python ,you need set your data and model path in cfg/default.yaml
+if use this repo ,you need set your data and model path in cfg/default.yaml
 
 ```bash
     

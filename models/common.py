@@ -803,8 +803,8 @@ class C3(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1) 
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
-        self.m = nn.Sequential(*((InvolutionBottleneck(c_, c_, shortcut, g, e=1.0) if(Involution) else Bottleneck(c_, c_, shortcut, g,k=((1,1),(3,3)), e=1.0) )for _ in range(n))) 
-      
+        #self.m = nn.Sequential(*((InvolutionBottleneck(c_, c_, shortcut, g, e=1.0) if(Involution) else Bottleneck(c_, c_, shortcut, g,k=((1,1),(3,3)), e=1.0) for _ in range(n))) 
+        self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g,k=((1,1),(3,3)), e=1.0) for _ in range(n)))
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), 1))
 
@@ -910,7 +910,13 @@ class C3Ghost(C3):
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(GhostBottleneck(c_, c_) for _ in range(n)))
         
-
+class C2fGhostV2(C2f):
+     # C3 module with GhostBottleneckV2()
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(GhostBottleneckV2(c_, c_,layer_id=id) for id in range(n)))
+        
 class SPP(nn.Module):
     # Spatial Pyramid Pooling (SPP) layer https://arxiv.org/abs/1406.4729
     def __init__(self, c1, c2, k=(5, 9, 13)):
@@ -1025,7 +1031,123 @@ class GhostBottleneck(nn.Module):
 
     def forward(self, x):
         return self.conv(x) + self.shortcut(x)
+
+class GhostModuleV2(nn.Module):
+    # Ghost Bottleneck https://github.com/huawei-noah
+    def __init__(self, c1, c2, kernel_size=1, ratio=2, dw_size=3, stride=1, relu=True, mode='original', args=None):
+        super(GhostModuleV2, self).__init__()
+        self.mode = mode
+        self.gate_fn = nn.Sigmoid()
+ 
+        if self.mode in ['original']:
+            self.oup = c2
+            init_channels = math.ceil(c2/ ratio)
+            new_channels = init_channels * (ratio - 1)
+            self.primary_conv = nn.Sequential(
+                nn.Conv2d(c1, init_channels, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(init_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.cheap_operation = nn.Sequential(
+                nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size // 2, groups=init_channels, bias=False),
+                nn.BatchNorm2d(new_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+        elif self.mode in ['attn']:
+            self.oup = c2
+            init_channels = math.ceil(c2 / ratio)
+            new_channels = init_channels * (ratio - 1)
+            self.primary_conv = nn.Sequential(
+                nn.Conv2d(c1, init_channels, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(init_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.cheap_operation = nn.Sequential(
+                nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size // 2, groups=init_channels, bias=False),
+                nn.BatchNorm2d(new_channels),
+                nn.ReLU(inplace=True) if relu else nn.Sequential(),
+            )
+            self.short_conv = nn.Sequential(
+                nn.Conv2d(c1, c2, kernel_size, stride, kernel_size // 2, bias=False),
+                nn.BatchNorm2d(c2),
+                nn.Conv2d(c2, c2, kernel_size=(1, 5), stride=1, padding=(0, 2), groups=c2, bias=False),
+                nn.BatchNorm2d(c2),
+                nn.Conv2d(c2, c2, kernel_size=(5, 1), stride=1, padding=(2, 0), groups=c2, bias=False),
+                nn.BatchNorm2d(c2),
+            )
+ 
+    def forward(self, x):
+        print("check ghostv2 input size:",x.size())
+        if self.mode in ['original']:
+            x1 = self.primary_conv(x)
+            x2 = self.cheap_operation(x1)
+            out = torch.cat([x1, x2], dim=1)
+            print("check ghostv2 input size:",out[:, :self.oup, :, :].size())
+            return out[:, :self.oup, :, :]
+        elif self.mode in ['attn']:
+            res = self.short_conv(F.avg_pool2d(x, kernel_size=2, stride=2))
+            x1 = self.primary_conv(x)
+            x2 = self.cheap_operation(x1)
+            out = torch.cat([x1, x2], dim=1)
+            out=out[:, :self.oup, :, :] * F.interpolate(self.gate_fn(res), size=(out.shape[-2], out.shape[-1]),
+                                                           mode='nearest')
+            print("check ghostv2 output size:",out.size())
+            return out
+
+class GhostBottleneckV2(nn.Module): 
+ 
+    def __init__(self, c1, c2, dw_kernel_size=3,
+                 stride=1, act_layer=nn.ReLU, se_ratio=0.,layer_id=None,args=None):
+        super().__init__()
         
+        has_se = se_ratio is not None and se_ratio > 0.
+        self.stride = stride
+        mid_chs=c2 //2
+        # Point-wise expansion
+        if layer_id<=1:
+            self.ghost1 = GhostModuleV2(c1, mid_chs, relu=True,mode='original',args=args)
+        else:
+            self.ghost1 = GhostModuleV2(c1, mid_chs, relu=True,mode='attn',args=args) 
+ 
+        # Depth-wise convolution
+        if self.stride > 1:
+            self.conv_dw = nn.Conv2d(mid_chs, mid_chs, dw_kernel_size, stride=stride,
+                             padding=(dw_kernel_size-1)//2,groups=mid_chs, bias=False)
+            self.bn_dw = nn.BatchNorm2d(mid_chs)
+ 
+        # Squeeze-and-excitation
+        if has_se:
+            self.se = SqueezeExcite(mid_chs, se_ratio=se_ratio)
+        else:
+            self.se = None
+            
+        self.ghost2 = GhostModuleV2(mid_chs, c2, relu=False,mode='original',args=args)
+        
+        # shortcut
+        if (c1 == c2 and self.stride == 1):
+            self.shortcut = nn.Sequential()
+        else:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(c1, c1, dw_kernel_size, stride=stride,
+                       padding=(dw_kernel_size-1)//2, groups=in_chs, bias=False),
+                nn.BatchNorm2d(c1),
+                nn.Conv2d(c1, c2, 1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(c2),
+            )
+    def forward(self, x):
+        print("check ghostv2BOTTLENCK input size:",x.size())
+        residual = x
+        x = self.ghost1(x)
+        if self.stride > 1:
+            x = self.conv_dw(x)
+            x = self.bn_dw(x)
+        if self.se is not None:
+            x = self.se(x)
+        x = self.ghost2(x)
+        x += self.shortcut(residual)
+        print("check ghostv2BOTTLENCK OUTPUIT size:",x.size())
+        return x
+    
 class Contract(nn.Module):
     # Contract width-height into channels, i.e. x(1,64,80,80) to x(1,256,40,40)
     def __init__(self, gain=2):

@@ -1602,8 +1602,8 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
             
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in {Classify,nn.Conv2d,C2f,C1, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,ResBlock_CBAM,CBAM,DownC,Stem,
-                 CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
+        if m in {Classify,nn.Conv2d,C2f,C1, Conv, GhostConv, GhostModuleV2,GhostBottleneckV2,Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP,ResBlock_CBAM,CBAM,DownC,Stem,
+                 CoordAtt,CrossConv,C3,CTR3,Involution, C3SPP, C3Ghost,C2fGhostV2, CARAFE, nn.ConvTranspose2d, DWConvTranspose2d, C3x,SPPCSPC,GhostSPPCSPC,BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                   RepConv, RepConv_OREPA,RepBottleneck, RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC,  
                  Res, ResCSPA, ResCSPB, ResCSPC, 
                  RepRes, RepResCSPA, RepResCSPB, RepResCSPC, 
@@ -1617,7 +1617,7 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP,C2f,C1, C3,C3TR,CTR3,C3Ghost, C3x, SPPCSPC, GhostSPPCSPC, 
+            if m in {BottleneckCSP,C2f,C1, C3,C3TR,CTR3,C3Ghost,C2fGhostV2,C3x, SPPCSPC, GhostSPPCSPC, 
                      BottleneckCSPA, BottleneckCSPB, BottleneckCSPC, 
                      RepBottleneckCSPA, RepBottleneckCSPB, RepBottleneckCSPC, 
                      ResCSPA, ResCSPB, ResCSPC, 
@@ -1629,7 +1629,7 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
                      ST2CSPA, ST2CSPB, ST2CSPC}:
                 args.insert(2, n)  # number of repeats
                 n = 1
-            if m in {Conv, GhostConv, Bottleneck, GhostBottleneck, DWConv, MixConv2d, Focus, ConvFocus, CrossConv, BottleneckCSP, C3, C3TR}:
+            if m in {Conv, GhostConv, Bottleneck, GhostBottleneck, GhostModuleV2,GhostBottleneckV2,DWConv, MixConv2d, Focus, ConvFocus, CrossConv, BottleneckCSP, C3, C3TR}:
                 if 'act' in d.keys():
                     args_dict = {"act" : d['act']}    
         elif m is nn.BatchNorm2d:
