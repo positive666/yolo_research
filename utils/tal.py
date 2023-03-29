@@ -220,12 +220,12 @@ def make_anchors(feats, strides, grid_cell_offset=0.5):
     return torch.cat(anchor_points), torch.cat(stride_tensor)
 
 
-def dist2bbox(distance, anchor_points, xywh=True, dim=-1):
+def dist2bbox(distance, anchor_points, xywh=True, dim=-1): '''distance:为Dfl输出的结果，代表anchors中心点的距离值，根据距离值转换BOX坐标'''
     """Transform distance(ltrb) to box(xywh or xyxy)."""
-    lt, rb = torch.split(distance, 2, dim)
-    x1y1 = anchor_points - lt
+    lt, rb = torch.split(distance, 2, dim)     '''分别取出lt,rb的距离对值'''
+    x1y1 = anchor_points - lt                  #计算坐标
     x2y2 = anchor_points + rb
-    if xywh:
+    if xywh:                                 ##bOX 格式转换
         c_xy = (x1y1 + x2y2) / 2
         wh = x2y2 - x1y1
         return torch.cat((c_xy, wh), dim)  # xywh bbox

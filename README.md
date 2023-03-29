@@ -18,7 +18,7 @@
 ##  <div align="left">🚀 yolo_reserach PLUS High-level</div>
 
 
-更新升级中.. Add latest V8 core （工作繁忙，会不断更新优化，有问题挂issue）
+更新升级中.. Add latest V8 core yolov8解析：https://blog.csdn.net/weixin_44119362/article/details/129417459（工作繁忙，会不断更新优化，有问题挂issue）
 
 ### <div align="left">⭐新闻板块【实时更新/计划】</div>
 
