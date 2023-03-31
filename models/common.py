@@ -1133,6 +1133,7 @@ class GhostBottleneckV2(nn.Module):
                 nn.BatchNorm2d(c2),
             )
     def forward(self, x):
+        
         residual = x
         x = self.ghost1(x)
         if self.stride > 1:
