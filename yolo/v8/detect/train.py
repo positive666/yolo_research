@@ -202,14 +202,13 @@ class Loss:
 
 
 def train(cfg=DEFAULT_CFG, use_python=False):
-    model = "yolov8n.pt"
+    model = "models/detect/v8_cfg/yolov8su_ghostv2.yaml"
     data = cfg.data or "coco128.yaml"  # or yolo.ClassificationDataset("mnist")
     device = cfg.device if cfg.device is not None else ''
-
     args = dict(model=model, data=data, device=device)
     if use_python:
         from yolo.engine.model  import YOLO
-        YOLO(model).train(**args)
+        YOLO(model)(cfg.model).train(**args)
     else:
         trainer = DetectionTrainer(overrides=args)
         trainer.train()

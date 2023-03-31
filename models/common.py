@@ -1133,7 +1133,6 @@ class GhostBottleneckV2(nn.Module):
                 nn.BatchNorm2d(c2),
             )
     def forward(self, x):
-        print("check ghostv2BOTTLENCK input size:",x.size())
         residual = x
         x = self.ghost1(x)
         if self.stride > 1:
@@ -1143,7 +1142,7 @@ class GhostBottleneckV2(nn.Module):
             x = self.se(x)
         x = self.ghost2(x)
         x += self.shortcut(residual)
-        print("check ghostv2BOTTLENCK OUTPUIT size:",x.size())
+        #print("check ghostv2BOTTLENCK OUTPUIT size:",x.size())
         return x
     
 class Contract(nn.Module):
