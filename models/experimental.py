@@ -16,7 +16,67 @@ import logging
 
 LOGGER = logging.getLogger("yolo_research")
            
-           
+def guess_model_task(model):
+    
+    """
+    Guess the task of a PyTorch model from its architecture or configuration.
+    Args:
+        model (nn.Module) or (dict): PyTorch model or model configuration in YAML format.
+    Returns:
+        str: Task of the model ('detect', 'segment', 'classify').
+    Raises:
+        SyntaxError: If the task of the model could not be determined.
+    """
+    import contextlib
+    def cfg2task(cfg):
+        
+        # Guess from YAML dictionary
+        m = cfg['head'][-1][-2].lower()  # output module name
+        if m in ('classify', 'classifier', 'cls', 'fc'):
+            return 'classify'
+        if m == 'detect' or 'V8_Detect':
+            return 'detect'
+        if m == 'segment' or 'V8_Segment':
+            return 'segment'
+
+    # Guess from model cfg
+    if isinstance(model, dict):
+        
+        with contextlib.suppress(Exception):
+            return cfg2task(model)
+
+    # Guess from PyTorch model
+    if isinstance(model, nn.Module):  # PyTorch model
+        for x in 'model.args', 'model.model.args', 'model.model.model.args':
+            with contextlib.suppress(Exception):
+                return eval(x)['task']
+        for x in 'model.yaml', 'model.model.yaml', 'model.model.model.yaml':
+            with contextlib.suppress(Exception):
+                return cfg2task(eval(x))
+
+        for m in model.modules():
+            if isinstance(m, Detect):
+                return 'detect'
+            elif isinstance(m, Segment):
+                return 'segment'
+            elif isinstance(m, Classify):
+                return 'classify'
+
+    # Guess from model filename
+    if isinstance(model, (str, Path)):
+        model = Path(model)
+        if '-seg' in model.stem or 'segment' in model.parts:
+            return 'segment'
+        elif '-cls' in model.stem or 'classify' in model.parts:
+            return 'classify'
+        elif 'detect' in model.parts:
+            return 'detect'
+
+    # Unable to determine task from model
+    LOGGER.warning("WARNING ⚠️ Unable to automatically guess model task, assuming 'task=detect'. "
+                   "Explicitly define task for your model, i.e. 'task=detect', 'task=segment' or 'task=classify'.")
+    return 'detect'  # assume detect
+       
 class Sum(nn.Module):
     # Weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, n, weight=False):  # n: number of inputs
@@ -89,7 +149,7 @@ def torch_safe_load(weight):
     file = attempt_download(weight)  # search online if missing locally
     try:
         return torch.load(file, map_location='cpu'),file  # load
-    except Exception as e:
+    except ModuleNotFoundError as e:
         if e.name == 'models':  # e.name is missing module name
             LOGGER.warning(f"WARNING ⚠️ {weight} requires {e.name}, which is not in ultralytics requirements."
                            f"\nAutoInstall will run now for {e.name} but this feature will be removed in the future."
@@ -144,14 +204,12 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
     
     ckpt,weight = torch_safe_load(weight)  # load ckpt
-    
     args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
     model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
-
     # Model compatibility updates
     model.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
     model.pt_path = weight  # attach *.pt file path to model
-    #model.task=guess_model_task(model)
+    model.task= guess_model_task(model)
     if not hasattr(model, 'stride'):
         model.stride = torch.tensor([32.])
 
@@ -180,6 +238,7 @@ def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
         # Model compatibility updates
         model.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
         model.pt_path = weights  # attach *.pt file path to model
+        model.task=guess_model_task(model)
         if not hasattr(model, 'stride'):
             model.stride = torch.tensor([32.])
 

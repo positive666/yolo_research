@@ -17,7 +17,6 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.cuda import amp
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -204,7 +203,7 @@ class BaseTrainer:
         ckpt = self.setup_model()
         self.model = self.model.to(self.device)
         self.set_model_attributes()
-        # Check AMP
+        #Check AMP
         self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
         if self.amp and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
@@ -637,7 +636,8 @@ def check_amp(model):
     prefix = colorstr('AMP: ')
     LOGGER.info(f'{prefix}running Automatic Mixed Precision (AMP) checks with YOLOv8n...')
     try:
-        from ultralytics import YOLO
+        from yolo.engine.model import YOLO
+      
         assert amp_allclose(YOLO('yolov8n.pt'), im)
         LOGGER.info(f'{prefix}checks passed ✅')
     except ConnectionError:

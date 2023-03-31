@@ -87,13 +87,15 @@ class YOLO:
         self.overrides = {}  # overrides for trainer object
         self.metrics = None  # validation/training metrics
         self.session = session  # HUB session
-
+      
         # Load or create new YOLO model
         model = str(model).strip()
+        
         suffix = Path(model).suffix
         if not suffix and Path(model).stem in GITHUB_ASSET_STEMS:
             model, suffix = Path(model).with_suffix('.pt'), '.pt'  # add suffix, i.e. yolov8n -> yolov8n.pt
-        if suffix == '.yaml':
+        
+        if suffix == '.yaml':  
             self._new(model, task)
         else:
             self._load(model, task)
@@ -134,6 +136,7 @@ class YOLO:
             task (str) or (None): model task
         """
         suffix = Path(weights).suffix
+        #from models.experimental import attempt_load
         if suffix == '.pt':
             self.model, self.ckpt = attempt_load_one_weight(weights)
             self.task = self.model.args['task']

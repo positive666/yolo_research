@@ -201,14 +201,40 @@ class Loss:
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
 
 
-def train(cfg=DEFAULT_CFG, use_python=False):
-    model = "models/detect/v8_cfg/yolov8su_ghostv2.yaml"
-    data = cfg.data or "coco128.yaml"  # or yolo.ClassificationDataset("mnist")
+def rename_custom_weight(filename1: str, filename2: str) -> None:
+    """将文件名 filename1 的前缀修改为文件名 filename2 的前缀"""
+    # 获取文件名的前缀
+    prefix1, ext1 = filename1.split(".", maxsplit=1)
+    prefix2, ext2 = filename2.split(".", maxsplit=1)
+
+    
+        # 如果不相同，将 filename1 的前缀替换为 filename2 的前缀
+     # 判断前缀是否相同
+    if prefix1 != prefix2:
+        import os 
+        # 如果不相同，将 filename1 的前缀替换为 filename2 的前缀
+        print("【检查到你提供的模型结构和权重的前缀命名冲突，进行重命名来加载训练】")
+        new_filename1 = f"{prefix2}.{ext1}"
+        os.rename(filename1, new_filename1)
+        print(f"{filename1} 已更改为 {new_filename1}")
+    else:
+        print("文件名前缀相同")
+  
+
+
+def train(cfg=DEFAULT_CFG, use_python=True):
+    model = "yolov8su_ghostv2.yaml"
+    if cfg.pretrained_wts:
+       
+        rename_custom_weight(cfg.pretrained_wts, model)
+    data = cfg.data   # or yolo.ClassificationDataset("mnist")
     device = cfg.device if cfg.device is not None else ''
-    args = dict(model=model, data=data, device=device)
+    args = dict(model=cfg.pretrained_wts, data=data, device=device)
     if use_python:
         from yolo.engine.model  import YOLO
-        YOLO(model)(cfg.model).train(**args)
+       
+        model = YOLO(cfg.pretrained_wts)  # build a new model from scratch
+        model.train(**args)
     else:
         trainer = DetectionTrainer(overrides=args)
         trainer.train()

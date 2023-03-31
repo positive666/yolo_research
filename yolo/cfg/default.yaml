@@ -5,8 +5,9 @@ task: detect  # inference task, i.e. detect, segment, classify
 mode: train  # YOLO mode, i.e. train, val, predict, export
 
 # Train settings -------------------------------------------------------------------------------------------------------
-model: yolov8n.pt # path to model file, i.e. yolov8n.pt, yolov8n.yaml
+model: models/detect/v8_cfg/yolov8su_ghostv2.yaml # path to model file, i.e. yolov8n.pt, yolov8n.yaml
 data: data/coco128.yaml   # path to data file, i.e. i.e. coco128.yaml
+pretrained_wts: yolov8n.pt  # if your need custom model ,provide a pretrained weights
 epochs: 100  # number of epochs to train for
 patience: 50  # epochs to wait for no observable improvement for early stopping of training
 batch: 1  # number of images per batch (-1 for AutoBatch)
@@ -20,7 +21,7 @@ workers: 8  # number of worker threads for data loading (per RANK if DDP)
 project:  # project name
 name:  # experiment name, results saved to 'project/name' directory
 exist_ok: False  # whether to overwrite existing experiment
-pretrained: False  # whether to use a pretrained model
+pretrained: True  # whether to use a pretrained model
 optimizer: SGD  # optimizer to use, choices=['SGD', 'Adam', 'AdamW', 'RMSProp']
 verbose: True  # whether to print verbose output
 seed: 0  # random seed for reproducibility

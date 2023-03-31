@@ -1690,53 +1690,6 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
     
-def guess_model_task(model):
-    """
-    Guess the task of a PyTorch model from its architecture or configuration.
-    Args:
-        model (nn.Module) or (dict): PyTorch model or model configuration in YAML format.
-    Returns:
-        str: Task of the model ('detect', 'segment', 'classify').
-    Raises:
-        SyntaxError: If the task of the model could not be determined.
-    """
-    cfg = None
-    if isinstance(model, dict):
-        cfg = model
-    elif isinstance(model, nn.Module):  # PyTorch model
-        for x in 'model.args', 'model.model.args', 'model.model.model.args':
-            with contextlib.suppress(Exception):
-                return eval(x)['task']
-        for x in 'model.yaml', 'model.model.yaml', 'model.model.model.yaml':
-            with contextlib.suppress(Exception):
-                cfg = eval(x)
-                break
-
-    # Guess from YAML dictionary
-    if cfg:
-        m = cfg["head"][-1][-2].lower()  # output module name
-        if m in ["classify", "classifier", "cls", "fc"]:
-            return "classify"
-        if m in ["detect"]:
-            return "detect"
-        if m in ["segment"]:
-            return "segment"
-
-    # Guess from PyTorch model
-    if isinstance(model, nn.Module):
-        for m in model.modules():
-            if isinstance(m, Detect):
-                return "detect"
-            elif isinstance(m, Segment):
-                return "segment"
-            elif isinstance(m, Classify):
-                return "classify"
-
-    # Unable to determine task from model
-    raise SyntaxError("YOLO is unable to automatically guess model task. Explicitly define task for your model, "
-                      "i.e. 'task=detect', 'task=segment' or 'task=classify'.")
-    
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
