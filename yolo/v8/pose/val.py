@@ -7,7 +7,7 @@ import torch
 
 from yolo.utils import DEFAULT_CFG, LOGGER, ops
 from yolo.utils.checks import check_requirements
-from yolo.utils.metrics import OKS_SIGMA, PoseMetrics, box_iou, kpt_iou
+from utils.metrics import OKS_SIGMA, PoseMetrics, box_iou, kpt_iou
 from yolo.utils.plotting import output_to_target, plot_images
 from yolo.v8.detect import DetectionValidator
 

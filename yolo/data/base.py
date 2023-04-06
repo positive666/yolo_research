@@ -35,7 +35,8 @@ class BaseDataset(Dataset):
                  batch_size=None,
                  stride=32,
                  pad=0.5,
-                 single_cls=False):
+                 single_cls=False,
+                 classes=None):
         super().__init__()
         self.img_path = img_path
         self.imgsz = imgsz

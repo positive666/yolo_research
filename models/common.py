@@ -159,7 +159,7 @@ class ConvFocus(nn.Module):
  
 class DetectMultiBackend(nn.Module):
     # YOLOv5 MultiBackend class for python inference on various backends
-    def __init__(self, weights='yolov5s.pt', device=torch.device('cpu'), dnn=False, data=None, fp16=False, fuse=True):
+    def __init__(self, weights='yolov5s.pt', device=torch.device('cpu'), dnn=False, data=None, fp16=False, fuse=True,verbose=True):
          # Usage:
         #   PyTorch:              weights = *.pt
         #   TorchScript:                    *.torchscript
@@ -187,7 +187,7 @@ class DetectMultiBackend(nn.Module):
             w = attempt_download_asset(w)  # download if not local
         if nn_module:
             model = weights.to(device)
-            model = model.fuse() if fuse else model
+            model = model.fuse(verbose=verbose) if fuse else model
             if hasattr(model,'kpt_shape'):
                 kpt_shape=model.kpt_shape
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
@@ -197,6 +197,8 @@ class DetectMultiBackend(nn.Module):
             pt = True
         if pt:  # PyTorch
             model = attempt_load(weights if isinstance(weights, list) else w, device=device, inplace=True, fuse=fuse)
+            if hasattr(model,'kpt_shape'):
+                kpt_shape=model.kpt_shape
             stride = max(int(model.stride.max()), 32)  # model stride
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
             model.half() if fp16 else model.float()

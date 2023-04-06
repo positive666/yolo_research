@@ -94,7 +94,6 @@ class YOLO:
         suffix = Path(model).suffix
         if not suffix and Path(model).stem in GITHUB_ASSET_STEMS:
             model, suffix = Path(model).with_suffix('.pt'), '.pt'  # add suffix, i.e. yolov8n -> yolov8n.pt
-        
         if suffix == '.yaml':  
             self._new(model, task)
         else:
@@ -119,6 +118,7 @@ class YOLO:
         self.cfg = check_yaml(cfg)  # check YAML
         cfg_dict = yaml_load(self.cfg, append_filename=True)  # model dict
         self.task = task or guess_model_task(cfg_dict)
+        print(cfg_dict)
         self.model = TASK_MAP[self.task][0](cfg_dict, verbose=verbose and RANK == -1)  # build model
         self.overrides['model'] = self.cfg
 

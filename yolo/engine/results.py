@@ -11,8 +11,10 @@ from functools import lru_cache
 import numpy as np
 import torch
 import torchvision.transforms.functional as F
+import torchvision
 
-from yolo.utils import LOGGER,SimpleClass, ops, deprecation_warn
+from yolo.utils import LOGGER,ops, deprecation_warn
+from utils import SimpleClass
 from yolo.utils.plotting import Annotator, colors
 from utils.torch_utils import TORCHVISION_0_10
 

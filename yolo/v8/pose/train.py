@@ -9,7 +9,7 @@ from models.yolo import PoseModel
 from yolo import v8
 from yolo.utils import DEFAULT_CFG
 from utils.loss import KeypointLoss
-from yolo.utils.metrics import OKS_SIGMA
+from utils.metrics import OKS_SIGMA
 from yolo.utils.ops import xyxy2xywh
 from yolo.utils.plotting import plot_images, plot_results
 from utils.tal import make_anchors

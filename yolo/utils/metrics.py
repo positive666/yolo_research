@@ -11,8 +11,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from yolo.utils import LOGGER, SimpleClass, TryExcept
-
+from utils import  SimpleClass, TryExcept
+from utils.general import LOGGER
 
 # boxes
 def box_area(box):
