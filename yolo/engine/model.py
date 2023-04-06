@@ -87,7 +87,7 @@ class YOLO:
         self.overrides = {}  # overrides for trainer object
         self.metrics = None  # validation/training metrics
         self.session = session  # HUB session
-      
+        
         # Load or create new YOLO model
         model = str(model).strip()
         
@@ -118,7 +118,6 @@ class YOLO:
         self.cfg = check_yaml(cfg)  # check YAML
         cfg_dict = yaml_load(self.cfg, append_filename=True)  # model dict
         self.task = task or guess_model_task(cfg_dict)
-        print(cfg_dict)
         self.model = TASK_MAP[self.task][0](cfg_dict, verbose=verbose and RANK == -1)  # build model
         self.overrides['model'] = self.cfg
 
@@ -138,7 +137,7 @@ class YOLO:
         suffix = Path(weights).suffix
         #from models.experimental import attempt_load
         if suffix == '.pt':
-            self.model, self.ckpt = attempt_load_one_weight(weights)
+            self.model, self.ckpt = attempt_load_one_weight(weights) 
             self.task = self.model.args['task']
             self.overrides = self.model.args = self._reset_ckpt_args(self.model.args)
             self.ckpt_path = self.model.pt_path
@@ -147,6 +146,7 @@ class YOLO:
             self.model, self.ckpt = weights, None
             self.task = task or guess_model_task(weights)
             self.ckpt_path = weights
+    
         self.overrides['model'] = weights
 
     def _check_is_pytorch_model(self):
@@ -322,10 +322,14 @@ class YOLO:
             self.trainer.model = self.trainer.get_model(weights=self.model if self.ckpt else None, cfg=self.model.yaml)
             self.model = self.trainer.model
         self.trainer.hub_session = self.session  # attach optional HUB session
+        # if overrides.get('model'):
+        #     self.model=overrides.get('model')
+        #print("开始训练：",overrides.get('model'))
         self.trainer.train()
+        
         # update model and cfg after training
         if RANK in (-1, 0):
-            self.model, _ = attempt_load_one_weight(str(self.trainer.best))
+            self.model, _= attempt_load_one_weight(str(self.trainer.best))
             self.overrides = self.model.args
             self.metrics = getattr(self.trainer.validator, 'metrics', None)  # TODO: no metrics returned by DDP
 

@@ -114,10 +114,11 @@ class BaseTrainer:
 
         # Model and Dataloaders.
         self.model = self.args.model
+    
         try:
             if self.args.task == 'classify':
                 self.data = check_cls_dataset(self.args.data)
-            elif self.args.data.endswith('.yaml') or self.args.task in ('detect', 'segment'):
+            elif self.args.data.endswith('.yaml') or self.args.task in ('detect', 'v8_detect','v8_segment','segment'):
                 self.data = check_det_dataset(self.args.data)
                 if 'yaml_file' in self.data:
                     self.args.data = self.data['yaml_file']  # for validating 'yolo train data=url.zip' usage
@@ -201,13 +202,14 @@ class BaseTrainer:
         # Model
         self.run_callbacks('on_pretrain_routine_start')
         ckpt = self.setup_model()
+        
         self.model = self.model.to(self.device)
         self.set_model_attributes()
         #Check AMP
         self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
         if self.amp and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
-            self.amp = torch.tensor(check_amp(self.model), device=self.device)
+            #self.amp = torch.tensor(check_amp(self.model), device=self.device)
             callbacks.default_callbacks = callbacks_backup  # restore callbacks
         if RANK > -1:  # DDP
             dist.broadcast(self.amp, src=0)  # broadcast the tensor from rank 0 to all other ranks (returns None)
@@ -422,7 +424,7 @@ class BaseTrainer:
         """
         if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
             return
-
+      
         model, weights = self.model, None
         ckpt = None
         if str(model).endswith('.pt'):

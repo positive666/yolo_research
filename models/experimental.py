@@ -33,9 +33,9 @@ def guess_model_task(model):
         m = cfg['head'][-1][-2].lower()  # output module name
         if m in ('classify', 'classifier', 'cls', 'fc'):
             return 'classify'
-        if m == 'detect':
+        if m == 'detect'or'v8_detect':
             return 'detect'
-        if m == 'segment':
+        if m == 'segment'or 'v8_segment':
             return 'segment'
         if m == 'pose':
             return 'pose'
@@ -152,6 +152,7 @@ def torch_safe_load(weight):
     """
     from utils.general import check_requirements,check_suffix
     check_suffix(file=weight,suffix='.pt')
+    print(weight)
     file = attempt_download(weight)  # search online if missing locally
     try:
         return torch.load(file, map_location='cpu'),file  # load
@@ -208,7 +209,7 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     # Loads a single model weights
     from models.yolo import V8_Detect,V8_Segment
     from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
-    
+    #print("检查加载的权重:",weight)
     ckpt,weight = torch_safe_load(weight)  # load ckpt
     args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
     model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
