@@ -13,9 +13,6 @@ def train(cfg=DEFAULT_CFG, use_python=True):
         model=YOLO(cfg.model) 
         ##model=YOLO(cfg.pretrained_wts)  
         model.train(**args)
-    else:
-        trainer = DetectionTrainer(overrides=args)
-        trainer.train()
 
 if __name__ == "__main__":
     train()

@@ -188,6 +188,8 @@ class DetectMultiBackend(nn.Module):
         if nn_module:
             model = weights.to(device)
             model = model.fuse() if fuse else model
+            if hasattr(model,'kpt_shape'):
+                kpt_shape=model.kpt_shape
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
             stride = max(int(model.stride.max()), 32)  # model stride
             model.half() if fp16 else model.float()

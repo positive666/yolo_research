@@ -152,7 +152,7 @@ def time_sync():
 
 def get_latest_opset():
     # Return max supported ONNX opset by this version of torch
-    return max(int(k[14:]) for k in vars(torch.onnx) if 'symbolic_opset' in k)  # opset
+    return max(int(k[14:]) for k in vars(torch.onnx) if 'symbolic_opset' in k) -1 # opset
 
 def intersect_dicts(da, db, exclude=()):
     # Dictionary intersection of matching keys and shapes, omitting 'exclude' keys, using da values

@@ -906,7 +906,35 @@ class kapao_Detect(nn.Module):   #https://arxiv.org/abs/2111.08557
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
         return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
+    
+class Pose(V8_Detect):
+    # YOLOv8 Pose head for keypoints models
+    def __init__(self, nc=80, kpt_shape=(17, 3), ch=()):
+        super().__init__(nc, ch)
+        self.kpt_shape = kpt_shape  # number of keypoints, number of dims (2 for x,y or 3 for x,y,visible)
+        self.nk = kpt_shape[0] * kpt_shape[1]  # number of keypoints total
+        self.detect = V8_Detect.forward
 
+        c4 = max(ch[0] // 4, self.nk)
+        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.nk, 1)) for x in ch)
+
+    def forward(self, x):
+        bs = x[0].shape[0]  # batch size
+        kpt = torch.cat([self.cv4[i](x[i]).view(bs, self.nk, -1) for i in range(self.nl)], -1)  # (bs, 17*3, h*w)
+        x = self.detect(self, x)
+        if self.training:
+            return x, kpt
+        pred_kpt = self.kpts_decode(kpt)
+        return torch.cat([x, pred_kpt], 1) if self.export else (torch.cat([x[0], pred_kpt], 1), (x[1], kpt))
+
+    def kpts_decode(self, kpts):
+        ndim = self.kpt_shape[1]
+        y = kpts.clone()
+        if ndim == 3:
+            y[:, 2::3].sigmoid_()  # inplace sigmoid
+        y[:, 0::ndim] = (y[:, 0::ndim] * 2.0 + (self.anchors[0] - 0.5)) * self.strides
+        y[:, 1::ndim] = (y[:, 1::ndim] * 2.0 + (self.anchors[1] - 0.5)) * self.strides
+        return y
 
 
 class MT(nn.Module):
@@ -1101,7 +1129,7 @@ class DetectionModel(BaseModel):
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (V8_Detect,V8_Segment,Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment)) :
+        if isinstance(m, (V8_Detect,V8_Segment,Detect, ASFF_Detect,IDetect,IKeypoint,Kpt_Detect, Segment, ISegment, IRSegment,Pose)) :
             if anchor_head:
                 s = 256  # 2x min stride
                 m.inplace = self.inplace
@@ -1114,7 +1142,7 @@ class DetectionModel(BaseModel):
             else:
                 s=256
                 m.inplace = self.inplace
-                forward=lambda x:self.forward(x)[0] if isinstance(m,V8_Segment) else self.forward_v8(x)
+                forward=lambda x:self.forward(x)[0] if isinstance(m,(V8_Segment,Pose)) else self.forward_v8(x)
                 m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
                 self.stride = m.stride
                 m.bias_init()  # onlu run once
@@ -1339,9 +1367,19 @@ Model = DetectionModel  # retain YOLOv5 'Model' class for backwards compatibilit
 class SegmentationModel(DetectionModel):
     # YOLOv5 segmentation model
     def __init__(self, cfg='yolov5s-seg.yaml', ch=3, nc=None, anchors=None):
-        super().__init__(cfg, ch, nc, anchors)
+        super().__init__(cfg=cfg, ch=ch, nc=nc, anchors=None)
     def _forward_augment(self, x):
         raise NotImplementedError(('WARNING segmentationModel has not supported augment inference yet!!'))
+class PoseModel(DetectionModel):
+    # YOLOv8 pose model
+    def __init__(self, cfg='yolov8n-pose.yaml', ch=3, nc=None, data_kpt_shape=(None, None), verbose=True):
+        if not isinstance(cfg, dict):
+            cfg = yaml_model_load(cfg)  # load model YAML
+        if any(data_kpt_shape) and list(data_kpt_shape) != list(cfg['kpt_shape']):
+            LOGGER.info(f"Overriding model.yaml kpt_shape={cfg['kpt_shape']} with kpt_shape={data_kpt_shape}")
+            cfg['kpt_shape'] = data_kpt_shape
+        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)    
+    
 class kP_DetectionModel(BaseModel):
     def __init__(self, cfg='pose/cfg/yolov5s.yaml', ch=3, nc=1, anchors=None, num_coords=17, autobalance=False):  # model, input channels, number of classes
         super().__init__()
@@ -1504,6 +1542,36 @@ class kP_DetectionModel(BaseModel):
     def info(self, verbose=False, img_size=640):  # print model information
         model_info(self, verbose, img_size)
 
+def yaml_model_load(path):
+    import re
+
+    path = Path(path)
+    if path.stem in (f'yolov{d}{x}6' for x in 'nsmlx' for d in (5, 8)):
+        new_stem = re.sub(r'(\d+)([nslmx])6(.+)?$', r'\1\2-p6\3', path.stem)
+        LOGGER.warning(f'WARNING ⚠️ Ultralytics YOLO P6 models now use -p6 suffix. Renaming {path.stem} to {new_stem}.')
+        path = path.with_stem(new_stem)
+
+    unified_path = re.sub(r'(\d+)([nslmx])(.+)?$', r'\1\3', str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
+    yaml_file = check_yaml(unified_path, hard=False) or check_yaml(path)
+    d = yaml_load(yaml_file)  # model dict
+    d['scale'] = guess_model_scale(path)
+    d['yaml_file'] = str(path)
+    return d
+
+def guess_model_scale(model_path):
+    """
+    Takes a path to a YOLO model's YAML file as input and extracts the size character of the model's scale.
+    The function uses regular expression matching to find the pattern of the model scale in the YAML file name,
+    which is denoted by n, s, m, l, or x. The function returns the size character of the model scale as a string.
+    Args:
+        model_path (str or Path): The path to the YOLO model's YAML file.
+    Returns:
+        (str): The size character of the model's scale, which can be n, s, m, l, or x.
+    """
+    with contextlib.suppress(AttributeError):
+        import re
+        return re.search(r'yolov\d+([nslmx])', Path(model_path).stem).group(1)  # n, s, m, l, or x
+    return ''
 
 class ClassificationModel(BaseModel):
     # YOLOv5and YOLOV8 classification model
@@ -1569,12 +1637,27 @@ class ClassificationModel(BaseModel):
 
 
 def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
+    import ast 
     nkpt=0
     no=0
     anchors_head=True 
+    max_channels = float('inf')
     if verbose:
             LOGGER.info(f"\n{'':>3}{'from':>20}{'n':>3}{'params':>10}  {'module':<45}{'arguments':<30}")
-    nc, gd, gw,act=  d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    #initial
+    nc, act, scales = (d.get(x) for x in ('nc', 'activation', 'scales'))      
+    gd, gw, kpt_shape = (d.get(x, 1.0) for x in ('depth_multiple', 'width_multiple', 'kpt_shape'))
+   
+    if 'scales' in d.keys():  # guess scale 
+        if scales:
+            scale = d.get('scale')
+            if not scale:
+                scale = tuple(scales.keys())[0]
+                LOGGER.warning(f"WARNING ⚠️ no model scale passed. Assuming scale='{scale}'.")
+            gd, gw, max_channels = scales[scale]   
+    else :             
+        nc, gd, gw,act=  d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+   
     # check anchors
     if 'anchors' in d.keys():
         anchors=d['anchors']
@@ -1644,7 +1727,7 @@ def parse_model(d, ch,verbose=True):  # model_dict, input_channels(3)
             c2 = ch[f[0]]
         elif m is Foldcut:
             c2 = ch[f] // 2    
-        elif m in {V8_Detect,V8_Segment,Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment}:    
+        elif m in {V8_Detect,V8_Segment,Detect,kapao_Detect, ASFF_Detect, Decoupled_Detect, IDetect, Kpt_Detect,IKeypoint,IAuxDetect, IBin, Segment, ISegment, IRSegment,Pose}:    
             args.append([ch[x] for x in f])
             if isinstance(args[1], int) and anchors_head:  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)   

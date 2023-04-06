@@ -3,13 +3,13 @@
 Experimental modules
 """
 import math
-
+import contextlib
 import numpy as np
 import torch
+from pathlib import Path 
 import torch.nn as nn
-from models.common import Conv
 from utils.downloads import attempt_download
-from utils.general import check_yaml,check_requirements,check_suffix
+
 
 
 import logging
@@ -17,7 +17,7 @@ import logging
 LOGGER = logging.getLogger("yolo_research")
            
 def guess_model_task(model):
-    
+    from models.yolo import V8_Detect ,V8_Segment,Classify,Pose 
     """
     Guess the task of a PyTorch model from its architecture or configuration.
     Args:
@@ -27,21 +27,21 @@ def guess_model_task(model):
     Raises:
         SyntaxError: If the task of the model could not be determined.
     """
-    import contextlib
+
     def cfg2task(cfg):
-        
         # Guess from YAML dictionary
         m = cfg['head'][-1][-2].lower()  # output module name
         if m in ('classify', 'classifier', 'cls', 'fc'):
             return 'classify'
-        if m == 'detect' or 'V8_Detect':
+        if m == 'detect':
             return 'detect'
-        if m == 'segment' or 'V8_Segment':
+        if m == 'segment':
             return 'segment'
+        if m == 'pose':
+            return 'pose'
 
     # Guess from model cfg
     if isinstance(model, dict):
-        
         with contextlib.suppress(Exception):
             return cfg2task(model)
 
@@ -55,12 +55,14 @@ def guess_model_task(model):
                 return cfg2task(eval(x))
 
         for m in model.modules():
-            if isinstance(m, Detect):
+            if isinstance(m, V8_Detect):
                 return 'detect'
-            elif isinstance(m, Segment):
+            elif isinstance(m, V8_Segment):
                 return 'segment'
             elif isinstance(m, Classify):
                 return 'classify'
+            elif isinstance(m, Pose):
+                return 'pose'
 
     # Guess from model filename
     if isinstance(model, (str, Path)):
@@ -69,13 +71,16 @@ def guess_model_task(model):
             return 'segment'
         elif '-cls' in model.stem or 'classify' in model.parts:
             return 'classify'
+        elif '-pose' in model.stem or 'pose' in model.parts:
+            return 'pose'
         elif 'detect' in model.parts:
             return 'detect'
 
     # Unable to determine task from model
     LOGGER.warning("WARNING ⚠️ Unable to automatically guess model task, assuming 'task=detect'. "
-                   "Explicitly define task for your model, i.e. 'task=detect', 'task=segment' or 'task=classify'.")
+                   "Explicitly define task for your model, i.e. 'task=detect', 'segment', 'classify', or 'pose'.")
     return 'detect'  # assume detect
+
        
 class Sum(nn.Module):
     # Weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
@@ -145,6 +150,7 @@ def torch_safe_load(weight):
     Returns:
         The loaded PyTorch model.
     """
+    from utils.general import check_requirements,check_suffix
     check_suffix(file=weight,suffix='.pt')
     file = attempt_download(weight)  # search online if missing locally
     try:
@@ -164,7 +170,7 @@ def torch_safe_load(weight):
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     # Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a
     from models.yolo import Detect, Model,Decoupled_Detect,ASFF_Detect,IDetect,IAuxDetect,IBin,Kpt_Detect,IKeypoint,Segment,V8_Detect,V8_Segment
-
+    from models.common import Conv
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
         ckpt = torch.load(attempt_download(w),map_location='cpu')  # load ckpt

@@ -79,7 +79,7 @@ class SegmentationValidator(DetectionValidator):
 
             if npr == 0:
                 if nl:
-                    self.stats.append((correct_masks, correct_bboxes, *torch.zeros(
+                    self.stats.append((correct_bboxes, correct_masks, *torch.zeros(
                         (2, 0), device=self.device), cls.squeeze(-1)))
                     if self.args.plots:
                         self.confusion_matrix.process_batch(detections=None, labels=cls.squeeze(-1))
@@ -231,7 +231,7 @@ class SegmentationValidator(DetectionValidator):
                 for i, eval in enumerate([COCOeval(anno, pred, 'bbox'), COCOeval(anno, pred, 'segm')]):
                     if self.is_coco:
                         eval.params.imgIds = [int(Path(x).stem)
-                                              for x in self.dataloader.dataset.im_files]  # images to eval
+                                              for x in self.dataloader.dataset.im_files]  # im to eval
                     eval.evaluate()
                     eval.accumulate()
                     eval.summarize()

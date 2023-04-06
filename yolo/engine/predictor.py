@@ -25,6 +25,8 @@ Usage - formats:
                                     yolov8n_edgetpu.tflite     # TensorFlow Edge TPU
                                     yolov8n_paddle_model       # PaddlePaddle
     """
+    
+    
 import platform
 from collections import defaultdict
 from pathlib import Path
@@ -40,7 +42,16 @@ from yolo.utils.checks import check_imgsz, check_imshow
 from yolo.utils.files import increment_path
 from utils.torch_utils import select_device, smart_inference_mode
 
-
+STREAM_WARNING = """
+    WARNING ⚠️ stream/video/webcam/dir predict source will accumulate results in RAM unless `stream=True` is passed,
+    causing potential out-of-memory errors for large sources or long-running streams/videos.
+    Usage:
+        results = model(source=..., stream=True)  # generator of Results objects
+        for r in results:
+            boxes = r.boxes  # Boxes object for bbox outputs
+            masks = r.masks  # Masks object for segment masks outputs
+            probs = r.probs  # Class probabilities for classification outputs
+"""
 
 
 class BasePredictor:
@@ -107,7 +118,7 @@ class BasePredictor:
 
     def postprocess(self, preds, img, orig_img, classes=None):
         return preds
-
+    
     @smart_inference_mode()
     def __call__(self, source=None, model=None, stream=False):
         self.stream=stream
@@ -137,10 +148,10 @@ class BasePredictor:
             LOGGER.warning(STREAM_WARNING)
         self.vid_path, self.vid_writer = [None] * self.dataset.bs, [None] * self.dataset.bs
 
+    @smart_inference_mode()
     def stream_inference(self, source=None, model=None):
-        self.run_callbacks("on_predict_start")
         if self.args.verbose:
-            LOGGER.info("")
+            LOGGER.info('')
 
         # setup model
         if not self.model:
@@ -153,29 +164,43 @@ class BasePredictor:
             (self.save_dir / 'labels' if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
         # warmup model
         if not self.done_warmup:
-            self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.bs, 3, *self.imgsz))
+            self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
             self.done_warmup = True
 
         self.seen, self.windows, self.dt, self.batch = 0, [], (ops.Profile(), ops.Profile(), ops.Profile()), None
+        self.run_callbacks('on_predict_start')
         for batch in self.dataset:
-            self.run_callbacks("on_predict_batch_start")
+            self.run_callbacks('on_predict_batch_start')
             self.batch = batch
             path, im, im0s, vid_cap, s = batch
             visualize = increment_path(self.save_dir / Path(path).stem, mkdir=True) if self.args.visualize else False
+
+            # preprocess
             with self.dt[0]:
                 im = self.preprocess(im)
                 if len(im.shape) == 3:
                     im = im[None]  # expand for batch dim
 
-            # Inference
+            # inference
             with self.dt[1]:
                 preds = self.model(im, augment=self.args.augment, visualize=visualize)
 
             # postprocess
             with self.dt[2]:
-                self.results = self.postprocess(preds, im, im0s, self.classes)
-            for i in range(len(im)):
-                p, im0 = (path[i], im0s[i]) if self.source_type.webcam or self.source_type.from_img else (path, im0s)
+                self.results = self.postprocess(preds, im, im0s)
+            self.run_callbacks('on_predict_postprocess_end')
+
+            # visualize, save, write results
+            n = len(im)
+            for i in range(n):
+                self.results[i].speed = {
+                    'preprocess': self.dt[0].dt * 1E3 / n,
+                    'inference': self.dt[1].dt * 1E3 / n,
+                    'postprocess': self.dt[2].dt * 1E3 / n}
+                if self.source_type.tensor:  # skip write, show and plot operations if input is raw tensor
+                    continue
+                p, im0 = (path[i], im0s[i].copy()) if self.source_type.webcam or self.source_type.from_img \
+                    else (path, im0s.copy())
                 p = Path(p)
 
                 if self.args.verbose or self.args.save or self.args.save_txt or self.args.show:
@@ -186,13 +211,12 @@ class BasePredictor:
 
                 if self.args.save:
                     self.save_preds(vid_cap, i, str(self.save_dir / p.name))
-
-            self.run_callbacks("on_predict_batch_end")
+            self.run_callbacks('on_predict_batch_end')
             yield from self.results
 
             # Print time (inference-only)
             if self.args.verbose:
-                LOGGER.info(f"{s}{'' if len(preds) else '(no detections), '}{self.dt[1].dt * 1E3:.1f}ms")
+                LOGGER.info(f'{s}{self.dt[1].dt * 1E3:.1f}ms')
 
         # Release assets
         if isinstance(self.vid_writer[-1], cv2.VideoWriter):
@@ -201,20 +225,26 @@ class BasePredictor:
         # Print results
         if self.args.verbose and self.seen:
             t = tuple(x.t / self.seen * 1E3 for x in self.dt)  # speeds per image
-            LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms postprocess per image at shape '
+            LOGGER.info(f'Speed: %.1fms preprocess, %.1fms inference, %.1fms postprocess per image at shape '
                         f'{(1, 3, *self.imgsz)}' % t)
-        if self.args.save_txt or self.args.save:
+        if self.args.save or self.args.save_txt or self.args.save_crop:
             nl = len(list(self.save_dir.glob('labels/*.txt')))  # number of labels
             s = f"\n{nl} label{'s' * (nl > 1)} saved to {self.save_dir / 'labels'}" if self.args.save_txt else ''
             LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
 
-        self.run_callbacks("on_predict_end")
+        self.run_callbacks('on_predict_end')
 
-    def setup_model(self, model):
-        device = select_device(self.args.device)
+    def setup_model(self, model, verbose=True):
+        device = select_device(self.args.device, verbose=verbose)
         model = model or self.args.model
         self.args.half &= device.type != 'cpu'  # half precision only supported on CUDA
-        self.model = AutoBackend(model, device=device, dnn=self.args.dnn, data=self.args.data, fp16=self.args.half)
+        self.model = AutoBackend(model,
+                                 device=device,
+                                 dnn=self.args.dnn,
+                                 data=self.args.data,
+                                 fp16=self.args.half,
+                                 fuse=True,
+                                 verbose=verbose)
         self.device = device
         self.model.eval()
 
@@ -225,7 +255,7 @@ class BasePredictor:
             cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
             cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
         cv2.imshow(str(p), im0)
-        cv2.waitKey(1)  # 1 millisecond
+        cv2.waitKey(500 if self.batch[4].startswith('image') else 1)  # 1 millisecond
 
     def save_preds(self, vid_cap, idx, save_path):
         im0 = self.annotator.result()

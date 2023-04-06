@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Union
 
 from yolo import v8
-from models.yolo import (ClassificationModel, DetectionModel, SegmentationModel,
-                                  guess_model_task, nn)
-from models.experimental  import   attempt_load_one_weight
+from models.yolo import (ClassificationModel, DetectionModel, SegmentationModel,PoseModel,nn)
+from models.experimental  import attempt_load_one_weight,guess_model_task
 from yolo.cfg import get_cfg
 from yolo.engine.exporter import Exporter
 from yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS, LOGGER, ONLINE, RANK, ROOT,
@@ -27,7 +26,8 @@ TASK_MAP = {
         v8.detect.DetectionPredictor],
     'segment': [
         SegmentationModel, v8.segment.SegmentationTrainer, v8.segment.SegmentationValidator,
-        v8.segment.SegmentationPredictor]}
+        v8.segment.SegmentationPredictor],
+    'pose': [PoseModel, v8.pose.PoseTrainer, v8.pose.PoseValidator, v8.pose.PosePredictor]}
 
 
 class YOLO:
@@ -177,7 +177,7 @@ class YOLO:
         for p in self.model.parameters():
             p.requires_grad = True
 
-    def info(self, verbose=False):
+    def info(self, verbose=True):
         """
         Logs model info.
 
