@@ -34,8 +34,8 @@
 	- 融合了代码做了部分的优化，这里看了下V7的代码优化较差，后续会集成精简版本的分类、分割、检测、POSE检测的结构，目前已经完成了一部分工作，更新频繁有问题欢迎反馈和提供实验结果。
 <p>
 
-关于这个项目的使用说明详请可参考此博客：
-[csdn持续更新](https://blog.csdn.net/weixin_44119362/article/details/126895964?spm=1001.2014.3001.5501)    
+关于这个项目的使用说明详请可参考下面博客：
+[csdn持续更新2021-2022年](https://blog.csdn.net/weixin_44119362/article/details/126895964?spm=1001.2014.3001.5501) ,[csdn持续更新2023年](https://blog.csdn.net/weixin_44119362/article/details/129417459?spm=1001.2014.3001.5502)
 
 <details >
 <summary>当前 Project 结构说明</summary>
@@ -102,7 +102,7 @@ yolo_research
 
 </details>
 
-[CSDN同步更新](https://blog.csdn.net/weixin_44119362/article/details/125665404)
+[CSDN同步更新，主页可按兴趣原创文章点击](https://blog.csdn.net/weixin_44119362?type=blog)
 (保证每周同步更新一次维护，不定期更新算法代码和引进结果实验！关于消融实验大多来自朋友的热心反馈，探究范式CNN和transformer，如何根据经验设计网络结构、LOSS改进、辅助训练分支、样本匹配....  欢迎提供实验数据和結果~)
 
 
