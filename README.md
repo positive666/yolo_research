@@ -17,7 +17,7 @@
 
 ##  <div align="left">🚀 yolo_reserach PLUS High-level</div>
 
-
+🚀🚀🚀招募：寻热爱算法研发的小伙伴共同开发和维护开源项目，添加IDEA，甚至多模态领域应用也可，有成果不建议自己带走，工程上我来维护，需要一定的算法研发背景和能力，联系可首页邮箱。
 更新升级中.. Add latest V8 core yolov8解析：https://blog.csdn.net/weixin_44119362/article/details/129417459 ,（工作繁忙，会不断更新优化，有问题挂issue）
 
 ### <div align="left">⭐新闻板块【实时更新版块】</div>
