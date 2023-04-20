@@ -220,10 +220,11 @@ def attempt_download(file, repo='ultralytics/yolov5', release='v7.0'):
                 url=f'https://github.com/{repo}/releases/download/{tag}/{name}',
                 file=file,
                 #url2=f'https://storage.googleapis.com/{repo}/{tag}/{name}',  # backup url (optional)
-                min_bytes=1E5,
-                error_msg=f'{file} missing, try downloading from https://github.com/{repo}/releases/{tag} or {url3}')
+                min_bytes=1E5)
+                #error_msg=f'{file} missing, try downloading from https://github.com/{repo}/releases/{tag} or {url3}')
 
     return str(file)
+
 def attempt_download_asset(file, repo='ultralytics/assets', release='v0.0.0'):
     # Attempt file download from GitHub release assets if not found locally. release = 'latest', 'v6.2', etc.
     from yolo.utils import SETTINGS,LOGGER, checks, is_online # scoped for circular import
