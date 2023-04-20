@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import uuid
+import urllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Union
