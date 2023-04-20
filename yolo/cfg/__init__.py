@@ -11,7 +11,7 @@ from typing import Dict, List, Union
 
 from yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_PATH, LOGGER, PREFIX, ROOT,
                                     USER_CONFIG_DIR, IterableSimpleNamespace,checks, colorstr, yaml_load, yaml_print)
-#from yolo import __version__
+
 
 CLI_HELP_MSG = \
     """
@@ -187,7 +187,7 @@ def entrypoint(debug=''):
     if not args:  # no arguments passed
         LOGGER.info(CLI_HELP_MSG)
         return
-
+    from yolo import __version__
     tasks = 'detect', 'segment', 'classify'
     modes = 'train', 'val', 'predict', 'export'
     special = {

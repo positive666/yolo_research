@@ -5,7 +5,7 @@ from time import sleep
 
 import requests
 
-from yolo.hub.utils import HUB_API_ROOT, check_dataset_disk_space, smart_request,__version__
+from yolo.hub.utils import HUB_API_ROOT, PREFIX, smart_request,__version__
 from yolo.utils import is_colab, threaded
 
 AGENT_NAME = f'python-{__version__}-colab' if is_colab() else f'python-{__version__}-local'
@@ -80,9 +80,7 @@ class HubTrainingSession:
         except requests.exceptions.ConnectionError as e:
             raise ConnectionRefusedError('ERROR: The HUB server is not online. Please try again later.') from e
 
-    def check_disk_space(self):
-        if not check_dataset_disk_space(self.model['data']):
-            raise MemoryError("Not enough disk space")
+  
 
     @threaded
     def _heartbeats(self):

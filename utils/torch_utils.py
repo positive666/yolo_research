@@ -10,6 +10,7 @@ import subprocess
 import time
 import warnings
 from contextlib import contextmanager
+from torch.nn.parallel import DistributedDataParallel as DDP
 from copy import deepcopy
 from pathlib import Path
 
@@ -207,7 +208,6 @@ def profile(input, ops, n=10, device=None):
                 print(f'{p:12}{flops:12.4g}{mem:>14.3f}{tf:14.4g}{tb:14.4g}{str(s_in):>24s}{str(s_out):>24s}')
                 results.append([p, flops, mem, tf, tb, s_in, s_out])
             except Exception as e:
-                print(e)
                 results.append(None)
             torch.cuda.empty_cache()
     return results

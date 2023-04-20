@@ -442,6 +442,7 @@ def get_user_config_dir(sub_dir='Ultralytics'):
 
 
 USER_CONFIG_DIR = get_user_config_dir()  # Ultralytics settings dir
+SETTINGS_YAML = USER_CONFIG_DIR / 'settings.yaml'
 
 
 def emojis(string=''):
@@ -527,7 +528,7 @@ def set_sentry():
             not is_pytest_running() and \
             not is_github_actions_ci() and \
             ((is_pip_package() and not is_git_dir()) or
-             (get_git_origin_url() == "https://github.com/ultralytics/ultralytics.git" and get_git_branch() == "main")):
+             (get_git_origin_url() == "https://github.com/positive666/yolo_research.git" and get_git_branch() == "main")):
 
         import hashlib
         import sentry_sdk  # noqa
@@ -593,7 +594,7 @@ def get_settings(file=USER_CONFIG_DIR / 'settings.yaml', version='0.0.2'):
         return settings
 
 
-def set_settings(kwargs, file=USER_CONFIG_DIR / 'settings.yaml'):
+def set_settings(kwargs, file=SETTINGS_YAML):
     """
     Function that runs on a first-time ultralytics package installation to set up global settings and create necessary
     directories.
@@ -603,20 +604,55 @@ def set_settings(kwargs, file=USER_CONFIG_DIR / 'settings.yaml'):
 
 
 def deprecation_warn(arg, new_arg, version=None):
+    """Issue a deprecation warning when a deprecated argument is used, suggesting an updated argument."""
     if not version:
-        version = float(__version__[0:3]) + 0.2  # deprecate after 2nd major release
-    LOGGER.warning(
-        f'WARNING: `{arg}` is deprecated and will be removed in upcoming major release {version}. Use `{new_arg}` instead'
-    )
+        version = float(__version__[:3]) + 0.2  # deprecate after 2nd major release
+    LOGGER.warning(f"WARNING тЪая╕П '{arg}' is deprecated and will be removed in 'ultralytics {version}' in the future. "
+                   f"Please use '{new_arg}' instead.")
+
+
+def clean_url(url):
+    """Strip auth from URL, i.e. https://url.com/file.txt?auth -> https://url.com/file.txt."""
+    url = str(Path(url)).replace(':/', '://')  # Pathlib turns :// -> :/
+    return urllib.parse.unquote(url).split('?')[0]  # '%2F' to '/', split https://url.com/file.txt?auth
+
+
+def url2file(url):
+    """Convert URL to filename, i.e. https://url.com/file.txt?auth -> file.txt."""
+    return Path(clean_url(url)).name
+
 
 
 # Run below code on yolo/utils init ------------------------------------------------------------------------------------
 
 # Check first-install steps
-PREFIX = colorstr('Ultralytics: ')
+PREFIX = colorstr('yolo_research: ')
 SETTINGS = get_settings()
 DATASETS_DIR = Path(SETTINGS['datasets_dir'])  # global datasets directory
 ENVIRONMENT = 'Colab' if is_colab() else 'Kaggle' if is_kaggle() else 'Jupyter' if is_jupyter() else \
     'Docker' if is_docker() else platform.system()
 TESTS_RUNNING = is_pytest_running() or is_github_actions_ci()
 set_sentry()
+
+# OpenCV Multilanguage-friendly functions ------------------------------------------------------------------------------------
+imshow_ = cv2.imshow  # copy to avoid recursion errors
+
+
+def imread(filename, flags=cv2.IMREAD_COLOR):
+    return cv2.imdecode(np.fromfile(filename, np.uint8), flags)
+
+
+def imwrite(filename, img):
+    try:
+        cv2.imencode(Path(filename).suffix, img)[1].tofile(filename)
+        return True
+    except Exception:
+        return False
+
+
+def imshow(path, im):
+    imshow_(path.encode('unicode_escape').decode(), im)
+
+
+if Path(inspect.stack()[0].filename).parent.parent.as_posix() in inspect.stack()[-1].filename:
+    cv2.imread, cv2.imwrite, cv2.imshow = imread, imwrite, imshow  # redefine
