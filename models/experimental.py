@@ -137,7 +137,7 @@ class Ensemble(nn.ModuleList):
         y = [module(x, augment, profile, visualize)[0] for module in self]
         # y = torch.stack(y).max(0)[0]  # max ensemble
         # y = torch.stack(y).mean(0)  # mean ensemble
-        y = torch.cat(y, 1)  # nms ensemble
+        y = torch.cat(y, 2)  # nms ensemble
         return y, None  # inference, train output
 
 def torch_safe_load(weight):
