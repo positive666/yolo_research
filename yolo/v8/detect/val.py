@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from yolo.data import build_dataloader
-from yolo.data.dataloaders.v5loader import create_dataloader, build_yolo_dataset
+from yolo.data import build_dataloader, build_yolo_dataset
+from yolo.data.dataloaders.v5loader import create_dataloader
 from yolo.engine.validator import BaseValidator
 from yolo.utils import DEFAULT_CFG, LOGGER, colorstr, ops
 from yolo.utils.checks import check_requirements
