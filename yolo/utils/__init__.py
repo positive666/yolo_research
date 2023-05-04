@@ -173,7 +173,7 @@ def yaml_save(file='data.yaml', data=None):
         if isinstance(v,Path):
                 dict[k]=str(v)
     with open(file, 'w') as f:
-        yaml.safe_dump(data f, sort_keys=False)
+        yaml.safe_dump(data,f, sort_keys=False)
 
 
 def yaml_load(file='data.yaml', append_filename=False):

@@ -37,6 +37,7 @@ import torch
 from models.common import DetectMultiBackend as AutoBackend
 from yolo.cfg import get_cfg
 from yolo.data import load_inference_source
+from yolo.data.augment import LetterBox, classify_transforms
 from yolo.utils import DEFAULT_CFG, LOGGER, SETTINGS, callbacks, colorstr, ops
 from yolo.utils.checks import check_imgsz, check_imshow
 from yolo.utils.files import increment_path

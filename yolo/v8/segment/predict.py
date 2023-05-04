@@ -11,7 +11,10 @@ from yolo.v8.detect.predict import DetectionPredictor
 
 
 class SegmentationPredictor(DetectionPredictor):
-
+     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
+        super().__init__(cfg, overrides, _callbacks)
+        self.args.task = 'segment'
+        
     def postprocess(self, preds, img, orig_img, classes=None):
         # TODO: filter by classes
         p = ops.non_max_suppression(preds[0],
@@ -24,17 +27,11 @@ class SegmentationPredictor(DetectionPredictor):
         results = []
         proto = preds[1][-1]
         for i, pred in enumerate(p):
-            shape = orig_img[i].shape if isinstance(orig_img, list) else orig_img.shape
-            if not len(pred):
-                results.append(Results(boxes=pred[:, :6], orig_shape=shape[:2]))  # save empty boxes
-                continue
-            if self.args.retina_masks:
-                pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], shape).round()
-                masks = ops.process_mask_native(proto[i], pred[:, 6:], pred[:, :4], shape[:2])  # HWC
-            else:
-                masks = ops.process_mask(proto[i], pred[:, 6:], pred[:, :4], img.shape[2:], upsample=True)  # HWC
-                pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], shape).round()
-            results.append(Results(boxes=pred[:, :6], masks=masks, orig_shape=shape[:2]))
+            orig_img = orig_imgs[i] if isinstance(orig_imgs, list) else orig_imgs
+            path = self.batch[0]
+            img_path = path[i] if isinstance(path, list) else path
+            if not len(pred):  # save empty boxes
+                results.append(Results(orig_img=orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6]))
         return results
 
     def write_results(self, idx, results, batch):

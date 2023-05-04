@@ -10,40 +10,61 @@ sys.path.append("F:\\git_code\\yolov5_research\\")
 from yolo import v8
 from models.yolo import DetectionModel
 from yolo.data import build_dataloader
-from yolo.data.dataloaders.v5loader import create_dataloader
+from yolo.data.dataloaders.v5loader import create_dataloader, build_yolo_dataset
 from yolo.engine.trainer import BaseTrainer
-from yolo.utils import DEFAULT_CFG, RANK, colorstr
+from yolo.utils import DEFAULT_CFG, RANK, LOGGER,colorstr 
 from utils.loss import BboxLoss
 from yolo.utils.ops import xywh2xyxy
 from yolo.utils.plotting import plot_images, plot_results,plot_labels
 from utils.tal import TaskAlignedAssigner, dist2bbox, make_anchors
-from utils.torch_utils import de_parallel
+from utils.torch_utils import de_parallel, torch_distributed_zero_first  
 
 
 # BaseTrainer python usage
 class DetectionTrainer(BaseTrainer):
 
+    def build_dataset(self, img_path, mode='train', batch=None):
+        """Build YOLO Dataset
+        Args:
+            img_path (str): Path to the folder containing images.
+            mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
+            batch_size (int, optional): Size of batches, this is for `rect`. Defaults to None.
+        """
+        gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == 'val', stride=gs)
+    
     def get_dataloader(self, dataset_path, batch_size, mode='train', rank=0):
         # TODO: manage splits differently
         # calculate stride - check if model is initialized
-        gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
-        return create_dataloader(path=dataset_path,
-                                 imgsz=self.args.imgsz,
-                                 batch_size=batch_size,
-                                 stride=gs,
-                                 hyp=vars(self.args),
-                                 augment=mode == 'train',
-                                 cache=self.args.cache,
-                                 pad=0 if mode == 'train' else 0.5,
-                                 rect=self.args.rect or mode == 'val',
-                                 rank=rank,
-                                 workers=self.args.workers,
-                                 close_mosaic=self.args.close_mosaic != 0,
-                                 prefix=colorstr(f'{mode}: '),
-                                 shuffle=mode == 'train',
-                                 seed=self.args.seed)[0] if self.args.v5loader else \
-            build_dataloader(self.args, batch_size, img_path=dataset_path, stride=gs, rank=rank, mode=mode,
-                             rect=mode == 'val', data_info=self.data)[0]
+        if self.args.v5loader:
+            LOGGER.warning("WARNING ⚠️ 'v5loader' feature is deprecated and will be removed soon. You can train using "
+                           'the default YOLOv8 dataloader instead, no argument is needed.')
+            gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+            return create_dataloader(path=dataset_path,
+                                     imgsz=self.args.imgsz,
+                                     batch_size=batch_size,
+                                     stride=gs,
+                                     hyp=vars(self.args),
+                                     augment=mode == 'train',
+                                     cache=self.args.cache,
+                                     pad=0 if mode == 'train' else 0.5,
+                                     rect=self.args.rect or mode == 'val',
+                                     rank=rank,
+                                     workers=self.args.workers,
+                                     close_mosaic=self.args.close_mosaic != 0,
+                                     prefix=colorstr(f'{mode}: '),
+                                     shuffle=mode == 'train',
+                                     seed=self.args.seed)[0]
+        assert mode in ['train', 'val']
+        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+            dataset = self.build_dataset(dataset_path, mode, batch_size)
+        shuffle = mode == 'train'
+        if getattr(dataset, 'rect', False) and shuffle:
+            LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
+            shuffle = False
+        workers = self.args.workers if mode == 'train' else self.args.workers * 2
+        dataloader = build_dataloader(dataset, batch_size, workers, shuffle, rank)
+        return dataloader
 
     def preprocess_batch(self, batch):
         batch['img'] = batch['img'].to(self.device, non_blocking=True).float() / 255

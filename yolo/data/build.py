@@ -10,13 +10,13 @@ from PIL import Image
 from torch.utils.data import DataLoader, dataloader, distributed
 
 from yolo.data.dataloaders.stream_loaders import (LOADERS, LoadImages, LoadPilAndNumpy, LoadScreenshots,
-                                                              LoadStreams, SourceTypes, autocast_list)
+                                                           LoadTensor,LoadStreams, SourceTypes, autocast_list)
 from yolo.data.utils import IMG_FORMATS, VID_FORMATS
 from yolo.utils.checks import check_file
 
-from ..utils import LOGGER, RANK, colorstr
+from ..utils import  RANK, colorstr
 from  utils.torch_utils import torch_distributed_zero_first
-from .dataset import ClassificationDataset, YOLODataset
+from .dataset import  YOLODataset
 from .utils import PIN_MEMORY
 
 
@@ -57,80 +57,48 @@ def seed_worker(worker_id):  # noqa
     worker_seed = torch.initial_seed() % 2 ** 32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+    
+    
+def build_yolo_dataset(cfg, img_path, batch, data_info, mode='train', rect=False, stride=32):
+    """Build YOLO Dataset"""
+    dataset = YOLODataset(
+        img_path=img_path,
+        imgsz=cfg.imgsz,
+        batch_size=batch,
+        augment=mode == 'train',  # augmentation
+        hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
+        rect=cfg.rect or rect,  # rectangular batches
+        cache=cfg.cache or None,
+        single_cls=cfg.single_cls or False,
+        stride=int(stride),
+        pad=0.0 if mode == 'train' else 0.5,
+        prefix=colorstr(f'{mode}: '),
+        use_segments=cfg.task == 'segment',
+        use_keypoints=cfg.task == 'pose',
+        classes=cfg.classes,
+        data=data_info)
+    return dataset
 
 
-def build_dataloader(cfg, batch, img_path,data_info, stride=32, rect=False, rank=-1, mode='train'):
-    assert mode in ['train', 'val']
-    shuffle = mode == 'train'
-    if cfg.rect and shuffle:
-        LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
-        shuffle = False
-    with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-        dataset = YOLODataset(
-            img_path=img_path,
-            imgsz=cfg.imgsz,
-            batch_size=batch,
-            augment=mode == 'train',  # augmentation
-            hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
-            rect=cfg.rect or rect,  # rectangular batches
-            cache=cfg.cache or None,
-            single_cls=cfg.single_cls or False,
-            stride=int(stride),
-            pad=0.0 if mode == 'train' else 0.5,
-            prefix=colorstr(f'{mode}: '),
-            use_segments=cfg.task == 'segment',
-            use_keypoints=cfg.task == 'pose',
-            classes=cfg.classes,
-            data=data_info)
+def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1):
+    """Return an InfiniteDataLoader or DataLoader for training or validation set."""
 
     batch = min(batch, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
-    workers = cfg.workers if mode == 'train' else cfg.workers * 2
     nw = min([os.cpu_count() // max(nd, 1), batch if batch > 1 else 0, workers])  # number of workers
     sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
-    loader = DataLoader if cfg.image_weights or cfg.close_mosaic else InfiniteDataLoader  # allow attribute updates
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + RANK)
-    return loader(dataset=dataset,
-                  batch_size=batch,
-                  shuffle=shuffle and sampler is None,
-                  num_workers=nw,
-                  sampler=sampler,
-                  pin_memory=PIN_MEMORY,
-                  collate_fn=getattr(dataset, 'collate_fn', None),
-                  worker_init_fn=seed_worker,
-                  generator=generator), dataset
-
-
-# build classification
-# TODO: using cfg like `build_dataloader`
-def build_classification_dataloader(path,
-                                    imgsz=224,
-                                    batch_size=16,
-                                    augment=True,
-                                    cache=False,
-                                    rank=-1,
-                                    workers=8,
-                                    shuffle=True):
-    # Returns Dataloader object to be used with YOLOv5 Classifier
-    with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-        dataset = ClassificationDataset(root=path, imgsz=imgsz, augment=augment, cache=cache)
-    batch_size = min(batch_size, len(dataset))
-    nd = torch.cuda.device_count()
-    nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])
-    sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
-    generator = torch.Generator()
-    generator.manual_seed(6148914691236517205 + RANK)
-    return InfiniteDataLoader(dataset,
-                              batch_size=batch_size,
+    return InfiniteDataLoader(dataset=dataset,
+                              batch_size=batch,
                               shuffle=shuffle and sampler is None,
                               num_workers=nw,
                               sampler=sampler,
                               pin_memory=PIN_MEMORY,
+                              collate_fn=getattr(dataset, 'collate_fn', None),
                               worker_init_fn=seed_worker,
-                              generator=generator)  # or DataLoader(persistent_workers=True)
-
-
+                              generator=generator)
+    
 def check_source(source):
     webcam, screenshot, from_img, in_memory, tensor = False, False, False, False, False
     if isinstance(source, (str, int, Path)):  # int for local usb camera
@@ -156,7 +124,7 @@ def check_source(source):
     return source, webcam, screenshot, from_img, in_memory, tensor
 
 
-def load_inference_source(source=None, transforms=None, imgsz=640, vid_stride=1, stride=32, auto=True):
+def load_inference_source(source=None, imgsz=640, vid_stride=1):
     """
     TODO: docs
     """
@@ -169,24 +137,13 @@ def load_inference_source(source=None, transforms=None, imgsz=640, vid_stride=1,
     elif in_memory:
         dataset = source
     elif webcam:
-        dataset = LoadStreams(source,
-                              imgsz=imgsz,
-                              stride=stride,
-                              auto=auto,
-                              transforms=transforms,
-                              vid_stride=vid_stride)
-
+        dataset = LoadStreams(source, imgsz=imgsz, vid_stride=vid_stride)
     elif screenshot:
-        dataset = LoadScreenshots(source, imgsz=imgsz, stride=stride, auto=auto, transforms=transforms)
+        dataset = LoadScreenshots(source, imgsz=imgsz)
     elif from_img:
-        dataset = LoadPilAndNumpy(source, imgsz=imgsz, stride=stride, auto=auto, transforms=transforms)
+        dataset = LoadPilAndNumpy(source, imgsz=imgsz)
     else:
-        dataset = LoadImages(source,
-                             imgsz=imgsz,
-                             stride=stride,
-                             auto=auto,
-                             transforms=transforms,
-                             vid_stride=vid_stride)
+        dataset = LoadImages(source, imgsz=imgsz, vid_stride=vid_stride)
 
     setattr(dataset, 'source_type', source_type)  # attach source types
 

@@ -11,21 +11,28 @@ from yolo.utils.plotting import Annotator
 
 class ClassificationPredictor(BasePredictor):
 
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
+        super().__init__(cfg, overrides, _callbacks)
+        self.args.task = 'classify'
+
     def get_annotator(self, img):
         return Annotator(img, example=str(self.model.names), pil=True)
 
     def preprocess(self, img):
+        if not isinstance(img, torch.Tensor):
+            img = torch.stack([self.transforms(im) for im in img], dim=0)
         img = (img if isinstance(img, torch.Tensor) else torch.Tensor(img)).to(self.model.device)
         img = img.half() if self.model.fp16 else img.float()  # uint8 to fp16/32
         return img
 
     def postprocess(self, preds, img, orig_img, classes=None):
         results = []
-        for i, pred in enumerate(preds):
-            shape = orig_img[i].shape if isinstance(orig_img, list) else orig_img.shape
-            results.append(Results(probs=pred, orig_shape=shape[:2]))
+        orig_img = orig_imgs[i] if isinstance(orig_imgs, list) else orig_imgs
+            path = self.batch[0]
+            img_path = path[i] if isinstance(path, list) else path
+            results.append(Results(orig_img=orig_img, path=img_path, names=self.model.names, probs=pred))
         return results
-
+        
     def write_results(self, idx, results, batch):
         p, im, im0 = batch
         log_string = ""
