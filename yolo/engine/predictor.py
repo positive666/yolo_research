@@ -107,40 +107,81 @@ class BasePredictor:
         self.callbacks = defaultdict(list, callbacks.default_callbacks)  # add callbacks
         callbacks.add_integration_callbacks(self)
 
-    def preprocess(self, img):
-        pass
+    def preprocess(self, im):
+        """Prepares input image before inference.
+        Args:
+            im (torch.Tensor | List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+        """
+        if not isinstance(im, torch.Tensor):
+            auto = all(x.shape == im[0].shape for x in im) and self.model.pt
+            if not auto:
+                LOGGER.warning(
+                    'WARNING ⚠️ Source shapes differ. For optimal performance supply similarly-shaped sources.')
+            same_shapes = all(x.shape == im[0].shape for x in im)
+            auto = same_shapes and self.model.pt
+            im = np.stack([LetterBox(self.imgsz, auto=auto, stride=self.model.stride)(image=x) for x in im])
+            im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
+            im = np.ascontiguousarray(im)  # contiguous
+            im = torch.from_numpy(im)
+        # NOTE: assuming im with (b, 3, h, w) if it's a tensor
+        img = im.to(self.device)
+        img = img.half() if self.model.fp16 else img.float()  # uint8 to fp16/32
+        img /= 255  # 0 - 255 to 0.0 - 1.0
+        return img
 
-    def get_annotator(self, img):
-        raise NotImplementedError("get_annotator function needs to be implemented")
-
-    def write_results(self, results, batch, print_string):
-        raise NotImplementedError("print_results function needs to be implemented")
-
-    def postprocess(self, preds, img, orig_img, classes=None):
-        return preds
+    def write_results(self, idx, results, batch):
+        """Write inference results to a file or directory."""
+        p, im, _ = batch
+        log_string = ''
+        if len(im.shape) == 3:
+            im = im[None]  # expand for batch dim
+        self.seen += 1
+        if self.source_type.webcam or self.source_type.from_img:  # batch_size >= 1
+            log_string += f'{idx}: '
+            frame = self.dataset.count
+        else:
+            frame = getattr(self.dataset, 'frame', 0)
+        self.data_path = p
+        self.txt_path = str(self.save_dir / 'labels' / p.stem) + ('' if self.dataset.mode == 'image' else f'_{frame}')
+        log_string += '%gx%g ' % im.shape[2:]  # print string
+        result = results[idx]
+        log_string += result.verbose()
+        if self.args.save or self.args.show:  # Add bbox to image
+            plot_args = dict(line_width=self.args.line_thickness,
+                             boxes=self.args.boxes,
+                             conf=self.args.show_conf,
+                             labels=self.args.show_labels)
+            if not self.args.retina_masks:
+                plot_args['im_gpu'] = im[idx]
+            self.plotted_img = result.plot(**plot_args)
+        # Write
+        if self.args.save_txt:
+            result.save_txt(f'{self.txt_path}.txt', save_conf=self.args.save_conf)
+        if self.args.save_crop:
+            result.save_crop(save_dir=self.save_dir / 'crops', file_name=self.data_path.stem)
+        return log_string
     
-    @smart_inference_mode()
+    def postprocess(self, preds, img, orig_img):
+        """Post-processes predictions for an image and returns them."""
+        return preds
     def __call__(self, source=None, model=None, stream=False):
-        self.stream=stream
+        """Performs inference on an image or stream."""
+        self.stream = stream
         if stream:
             return self.stream_inference(source, model)
         else:
             return list(self.stream_inference(source, model))  # merge list of Result into one
-
     def predict_cli(self, source=None, model=None):
-        # Method used for CLI prediction. It uses always generator as outputs as not required by CLI mode
+        """Method used for CLI prediction. It uses always generator as outputs as not required by CLI mode."""
         gen = self.stream_inference(source, model)
         for _ in gen:  # running CLI inference without accumulating any outputs (do not modify)
             pass
-
     def setup_source(self, source):
+        """Sets up source and inference mode."""
         self.imgsz = check_imgsz(self.args.imgsz, stride=self.model.stride, min_dim=2)  # check image size
-        self.dataset = load_inference_source(source=source,
-                                             transforms=getattr(self.model.model, 'transforms', None),
-                                             imgsz=self.imgsz,
-                                             vid_stride=self.args.vid_stride,
-                                             stride=self.model.stride,
-                                             auto=self.model.pt)
+        self.transforms = getattr(self.model.model, 'transforms', classify_transforms(
+            self.imgsz[0])) if self.args.task == 'classify' else None
+        self.dataset = load_inference_source(source=source, imgsz=self.imgsz, vid_stride=self.args.vid_stride)
         self.source_type = self.dataset.source_type
         if not getattr(self, 'stream', True) and (self.dataset.mode == 'stream' or  # streams
                                                   len(self.dataset) > 1000 or  # images
@@ -150,48 +191,41 @@ class BasePredictor:
 
     @smart_inference_mode()
     def stream_inference(self, source=None, model=None):
+        """Streams real-time inference on camera feed and saves results to file."""
         if self.args.verbose:
             LOGGER.info('')
-
-        # setup model
+        # Setup model
         if not self.model:
             self.setup_model(model)
-        # setup source every time predict is called
+        # Setup source every time predict is called
         self.setup_source(source if source is not None else self.args.source)
-
-        # check if save_dir/ label file exists
+        # Check if save_dir/ label file exists
         if self.args.save or self.args.save_txt:
             (self.save_dir / 'labels' if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
-        # warmup model
+        # Warmup model
         if not self.done_warmup:
             self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
             self.done_warmup = True
-
         self.seen, self.windows, self.dt, self.batch = 0, [], (ops.Profile(), ops.Profile(), ops.Profile()), None
         self.run_callbacks('on_predict_start')
         for batch in self.dataset:
             self.run_callbacks('on_predict_batch_start')
             self.batch = batch
-            path, im, im0s, vid_cap, s = batch
-            visualize = increment_path(self.save_dir / Path(path).stem, mkdir=True) if self.args.visualize else False
-
-            # preprocess
+            path, im0s, vid_cap, s = batch
+            visualize = increment_path(self.save_dir / Path(path[0]).stem,
+                                       mkdir=True) if self.args.visualize and (not self.source_type.tensor) else False
+            # Preprocess
             with self.dt[0]:
-                im = self.preprocess(im)
-                if len(im.shape) == 3:
-                    im = im[None]  # expand for batch dim
-
-            # inference
+                im = self.preprocess(im0s)
+            # Inference
             with self.dt[1]:
                 preds = self.model(im, augment=self.args.augment, visualize=visualize)
-
-            # postprocess
+            # Postprocess
             with self.dt[2]:
                 self.results = self.postprocess(preds, im, im0s)
             self.run_callbacks('on_predict_postprocess_end')
-
-            # visualize, save, write results
-            n = len(im)
+            # Visualize, save, write results
+            n = len(im0s)
             for i in range(n):
                 self.results[i].speed = {
                     'preprocess': self.dt[0].dt * 1E3 / n,
@@ -199,29 +233,22 @@ class BasePredictor:
                     'postprocess': self.dt[2].dt * 1E3 / n}
                 if self.source_type.tensor:  # skip write, show and plot operations if input is raw tensor
                     continue
-                p, im0 = (path[i], im0s[i].copy()) if self.source_type.webcam or self.source_type.from_img \
-                    else (path, im0s.copy())
+                p, im0 = path[i], im0s[i].copy()
                 p = Path(p)
-
                 if self.args.verbose or self.args.save or self.args.save_txt or self.args.show:
                     s += self.write_results(i, self.results, (p, im, im0))
-
-                if self.args.show:
+                if self.args.show and self.plotted_img is not None:
                     self.show(p)
-
-                if self.args.save:
+                if self.args.save and self.plotted_img is not None:
                     self.save_preds(vid_cap, i, str(self.save_dir / p.name))
             self.run_callbacks('on_predict_batch_end')
             yield from self.results
-
             # Print time (inference-only)
             if self.args.verbose:
                 LOGGER.info(f'{s}{self.dt[1].dt * 1E3:.1f}ms')
-
         # Release assets
         if isinstance(self.vid_writer[-1], cv2.VideoWriter):
             self.vid_writer[-1].release()  # release final video writer
-
         # Print results
         if self.args.verbose and self.seen:
             t = tuple(x.t / self.seen * 1E3 for x in self.dt)  # speeds per image
@@ -231,7 +258,6 @@ class BasePredictor:
             nl = len(list(self.save_dir.glob('labels/*.txt')))  # number of labels
             s = f"\n{nl} label{'s' * (nl > 1)} saved to {self.save_dir / 'labels'}" if self.args.save_txt else ''
             LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
-
         self.run_callbacks('on_predict_end')
 
     def setup_model(self, model, verbose=True):

@@ -20,11 +20,11 @@
 🚀🚀🚀招募：寻热爱算法研发的小伙伴共同开发和维护开源项目，添加IDEA，甚至多模态领域应用也可，有成果不建议自己带走，工程上我来维护，需要一定的算法研发背景和能力，联系可首页邮箱。
 更新升级中.. Add latest V8 core yolov8解析：https://blog.csdn.net/weixin_44119362/article/details/129417459 ,（工作繁忙，会不断更新优化，有问题挂issue）
 
-### <div align="left">⭐新闻板块【实时更新版块】</div>
-  - 2023/4/27  添加一键批量自动生成标注的工具You only click once ,[Prompt-Can-Anything:Auto label tools](https://github.com/positive666/Prompt-Can-Anything)
+### <div align="left">⭐新闻板块【实时更新&&记录学习】</div>
+  - 2023/4/27  添加一键批量自动生成标注的工具You Only click Once ,[Prompt-Can-Anything:Auto label tools](https://github.com/positive666/Prompt-Can-Anything)
 	- 2023/4/6  从2021年到2023年，即使不做检测，依然坚持更新，搬砖不易，后续会有更多更新,但是目前先集成稳定各个功能为主：更新v8的pose模块，支持v8代码训练自定义的网络结构并加载权重训练；之前的问题作个简单解释：就是在安装源码环境后其实只是支持你解析官方的预训练权重，如果你用本项目的代码训练后,可以卸载掉源码环境，继续更新中
 	- 2023/3/28 同步兼容最新的V8代码更新：目前V8依赖于pip install ultralytics,我在代码更新中也发现了该问题，虽然本项目做了分离，但是使用官方权重作为预训练权重去加载的前提下：仍然需要依赖中的ultralytics.nn文件夹，不然可能会报错，因为是这样的本项目改了模型层的参数名字，因为V8每层的名字是带“ultralytics.nn ”的，如果不安装这个部分代码，你torch打不开V8官方的权重，故目前两种解决办法：1.scratch 2.pip安装后打开将权重名字重构 3.代码目录修改 后续我会优化解决，不过目前项目中的工作太多了，故如果出现报错还是使用临时解决方案：pip install ultralytics,这样比较简单直接兼容，然后可以运行　python train_v8.py ，未解决的就是如果自定义机构可能无法直接加载官方的权重，汇后续解决！  
-	- 2023/3/1  add v8 core:春节期间看了下V8，由于近半年项目比较多也是耽误了好久(原版本是将V8的所有功能全部融合到了V5的代码中，和V8命令一样，但是训练的时候发生了问题，排查发现问题发生在V5的数据读取处理，所以暂时使用V8的训练结构代码，也便于区分)，然后抓紧时间不停更新；
+	- 2023/3/1  add v8 core:春节期间看V8，由于近半年项目比较多也是耽误了好久(原版本是将V8的所有功能全部融合到了V5的代码中，和V8命令一样，但是训练的时候发生了问题，排查发现问题发生在V5的数据读取处理，所以暂时使用V8的训练结构代码，也便于区分)，然后抓紧时间不停更新；
 	- 2022/11/23 修复已知BUG，V7.0版本更新兼容，年底比较忙后续忙完业务会大更新
 	- 2022/10/20 修复适配V7结构和额外任务引起的一些代码问题，实时更新V5的代码优化部分，添加了工具grad_cam在tools目录。
 	- 2022/9/19 修复已知BUG，更新了实时的V5BUG修复和代码优化融合验证，核心检测、分类、分割的部分CI验证，关键点检测实测训练正常，基本功能整理完毕。
@@ -140,11 +140,11 @@ if use this repo ,you need set your data and model path in cfg/default.yaml
 
 ```bash
     
-    python yolo\v8\detect\train.py  --<args>
+    python train_v8.py  --<args>
 
 ```
 
-推理部分和V5、V8的代码兼容
+推理部分和V5、V8的代码兼容 add --v8_det(supprot v8 models)
 </details>  
 
 <details>
