@@ -5,12 +5,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import sys
-sys.path.append("F:\\git_code\\yolov5_research\\")
+#import sys
+#from pathlib import Path
+#sys.path.append(str(Path(__file__).resolve().parents[0]))  # add ROOT to PATH
 from yolo import v8
 from models.yolo import DetectionModel
-from yolo.data import build_dataloader
-from yolo.data.dataloaders.v5loader import create_dataloader, build_yolo_dataset
+from yolo.data import build_dataloader, build_yolo_dataset
+from yolo.data.dataloaders.v5loader import create_dataloader
 from yolo.engine.trainer import BaseTrainer
 from yolo.utils import DEFAULT_CFG, RANK, LOGGER,colorstr 
 from utils.loss import BboxLoss
