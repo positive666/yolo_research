@@ -1343,11 +1343,7 @@ class DetectionModel(BaseModel):
         super().__init__()
         anchor_head=True
         self.yaml = cfg if isinstance(cfg, dict) else yaml_load(check_yaml(cfg), append_filename=True)  # cfg dict  
-        # else:  # is *.yaml
-        #     import yaml  # for torch hub
-        #     self.yaml_file = Path(cfg).name
-        #     with open(cfg, encoding='ascii', errors='ignore') as f:
-        #         self.yaml = yaml.safe_load(f)  # model dict
+    
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
         if nc and nc != self.yaml['nc']:
@@ -1821,7 +1817,7 @@ class ClassificationModel(BaseModel):
     def __init__(self, cfg=None, model=None, ch=3,nc=None, cutoff=10,verbose=True):  # yaml, model, number of classes, cutoff index
         super().__init__()
         self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg,ch,nc,verbose)
-
+       
     def _from_detection_model(self, model, nc=1000, cutoff=10):
         # Create a YOLOv5 classification model from a YOLOv5 detection model
         if isinstance(model, DetectMultiBackend):
