@@ -1838,7 +1838,7 @@ class ClassificationModel(BaseModel):
         self.nc = nc
 
     
-     def _from_yaml(self, cfg, ch, nc, verbose):
+    def _from_yaml(self, cfg, ch, nc, verbose):
         """Set YOLOv8 model configurations and define the model architecture."""
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
 
