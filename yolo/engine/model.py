@@ -182,7 +182,7 @@ class YOLO:
         self.model.load(weights)
         return self
 
-     def info(self, detailed=False, verbose=True):
+    def info(self, detailed=False, verbose=True):
         """
         Logs model info.
         Args:
