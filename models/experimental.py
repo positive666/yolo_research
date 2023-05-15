@@ -211,7 +211,7 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     from yolo.utils import DEFAULT_CFG_DICT,DEFAULT_CFG_KEYS
     #print("检查加载的权重:",weight)
     ckpt,weight = torch_safe_load(weight)  # load ckpt
-    args = {**DEFAULT_CFG_DICT, **ckpt['train_args']}  # combine model and default args, preferring model args
+    args = {**DEFAULT_CFG_DICT, **(ckpt.get('train_args', {}))}  # combine model and default args, preferring model args
     model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
     # Model compatibility updates
     model.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model
@@ -271,3 +271,20 @@ def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
     ensemble.stride = ensemble[torch.argmax(torch.tensor([m.stride.max() for m in ensemble])).int()].stride  # max stride
     assert all(model[0].nc == m.nc for m in ensemble), f'Models have different class counts: {[m.nc for m in ensemble]}'
     return ensemble
+
+def yaml_model_load(path):
+    """Load a YOLOv8 model from a YAML file."""
+    import re
+
+    path = Path(path)
+    if path.stem in (f'yolov{d}{x}6' for x in 'nsmlx' for d in (5, 8)):
+        new_stem = re.sub(r'(\d+)([nslmx])6(.+)?$', r'\1\2-p6\3', path.stem)
+        LOGGER.warning(f'WARNING ⚠️ Ultralytics YOLO P6 models now use -p6 suffix. Renaming {path.stem} to {new_stem}.')
+        path = path.with_stem(new_stem)
+
+    unified_path = re.sub(r'(\d+)([nslmx])(.+)?$', r'\1\3', str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
+    yaml_file = check_yaml(unified_path, hard=False) or check_yaml(path)
+    d = yaml_load(yaml_file)  # model dict
+    d['scale'] = guess_model_scale(path)
+    d['yaml_file'] = str(path)
+    return d

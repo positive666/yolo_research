@@ -28,7 +28,8 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
                            is_jupyter,make_divisible,non_max_suppression, yolov8_non_max_suppression,scale_boxes, xywh2xyxy, xyxy2xywh,yaml_load)
 from utils.plots import Annotator, colors,save_one_box
 from utils.torch_utils import copy_attr,smart_inference_mode
-#from yolo.utils.downloads import is_url,attempt_download_asset
+from .transformer import DeformableTransformerDecoder, DeformableTransformerDecoderLayer,bias_init_with_prob, linear_init_
+
 def autopad(k, p=None,d=1):  # kernel, padding
     # Pad to 'same' 
     if d > 1:
@@ -127,7 +128,54 @@ class Proto(nn.Module):
     def forward(self, x):
         return self.cv3(self.cv2(self.upsample(self.cv1(x))))
 
+class HGStem(nn.Module):
+    """StemBlock of PPHGNetV2 with 5 convolutions and one maxpool2d.
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/backbones/hgnet_v2.py
+    """
 
+    def __init__(self, c1, cm, c2):
+        super().__init__()
+        self.stem1 = Conv(c1, cm, 3, 2, act=nn.ReLU())
+        self.stem2a = Conv(cm, cm // 2, 2, 1, 0, act=nn.ReLU())
+        self.stem2b = Conv(cm // 2, cm, 2, 1, 0, act=nn.ReLU())
+        self.stem3 = Conv(cm * 2, cm, 3, 2, act=nn.ReLU())
+        self.stem4 = Conv(cm, c2, 1, 1, act=nn.ReLU())
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=1, padding=0, ceil_mode=True)
+
+    def forward(self, x):
+        """Forward pass of a PPHGNetV2 backbone layer."""
+        x = self.stem1(x)
+        x = F.pad(x, [0, 1, 0, 1])
+        x2 = self.stem2a(x)
+        x2 = F.pad(x2, [0, 1, 0, 1])
+        x2 = self.stem2b(x2)
+        x1 = self.pool(x)
+        x = torch.cat([x1, x2], dim=1)
+        x = self.stem3(x)
+        x = self.stem4(x)
+        return x
+
+
+class HGBlock(nn.Module):
+    """HG_Block of PPHGNetV2 with 2 convolutions and LightConv.
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/backbones/hgnet_v2.py
+    """
+
+    def __init__(self, c1, cm, c2, k=3, n=6, lightconv=False, shortcut=False, act=nn.ReLU()):
+        super().__init__()
+        block = LightConv if lightconv else Conv
+        self.m = nn.ModuleList(block(c1 if i == 0 else cm, cm, k=k, act=act) for i in range(n))
+        self.sc = Conv(c1 + n * cm, c2 // 2, 1, 1, act=act)  # squeeze conv
+        self.ec = Conv(c2 // 2, c2, 1, 1, act=act)  # excitation conv
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """Forward pass of a PPHGNetV2 backbone layer."""
+        y = [x]
+        y.extend(m(y[-1]) for m in self.m)
+        y = self.ec(self.sc(torch.cat(y, 1)))
+        return y + x if self.add else y
+        
 class Ensemble(nn.ModuleList):
     # Ensemble of models
     def __init__(self):
@@ -492,7 +540,22 @@ class Conv(nn.Module):
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
-        
+
+class LightConv(nn.Module):
+    """Light convolution with args(ch_in, ch_out, kernel).
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/backbones/hgnet_v2.py
+    """
+
+    def __init__(self, c1, c2, k=1, act=nn.ReLU()):
+        """Initialize Conv layer with given arguments including activation."""
+        super().__init__()
+        self.conv1 = Conv(c1, c2, 1, act=False)
+        self.conv2 = DWConv(c2, c2, k, act=act)
+
+    def forward(self, x):
+        """Apply 2 convolutions to input tensor."""
+        return self.conv2(self.conv1(x))
+       
         
 class DWConv(Conv):
     # Depth-wise convolution class
@@ -2701,7 +2764,7 @@ class SwinTransformer_Layer(nn.Module):
 class RepConv(nn.Module):
     # Represented convolution
     # https://arxiv.org/abs/2101.03697
-
+    default_act = nn.SiLU()  # default activation
     def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True, deploy=False):
         super(RepConv, self).__init__()
 
@@ -2709,7 +2772,7 @@ class RepConv(nn.Module):
         self.groups = g
         self.in_channels = c1
         self.out_channels = c2
-
+        
         assert k == 3
         assert autopad(k, p) == 1
 
@@ -2857,11 +2920,6 @@ class RepConv(nn.Module):
             bias_identity_expanded = torch.nn.Parameter( torch.zeros_like(rbr_1x1_bias) )
             weight_identity_expanded = torch.nn.Parameter( torch.zeros_like(weight_1x1_expanded) )            
         
-
-        #print(f"self.rbr_1x1.weight = {self.rbr_1x1.weight.shape}, ")
-        #print(f"weight_1x1_expanded = {weight_1x1_expanded.shape}, ")
-        #print(f"self.rbr_dense.weight = {self.rbr_dense.weight.shape}, ")
-
         self.rbr_dense.weight = torch.nn.Parameter(self.rbr_dense.weight + weight_1x1_expanded + weight_identity_expanded)
         self.rbr_dense.bias = torch.nn.Parameter(self.rbr_dense.bias + rbr_1x1_bias + bias_identity_expanded)
                 
@@ -2880,7 +2938,20 @@ class RepConv(nn.Module):
             del self.rbr_dense
             self.rbr_dense = None
 
+class RepC3(nn.Module):
+    """Rep C3."""
 
+    def __init__(self, c1, c2, n=3, e=1.0):
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c2, 1, 1)
+        self.cv2 = Conv(c1, c2, 1, 1)
+        self.m = nn.Sequential(*[RepConv(c_, c_) for _ in range(n)])
+        self.cv3 = Conv(c_, c2, 1, 1) if c_ != c2 else nn.Identity()
+
+    def forward(self, x):
+        """Forward pass of RT-DETR neck layer."""
+        return self.cv3(self.m(self.cv1(x)) + self.cv2(x))
 class RepBottleneck(Bottleneck):
     # Standard bottleneck
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion

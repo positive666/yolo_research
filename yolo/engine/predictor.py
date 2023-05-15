@@ -107,14 +107,24 @@ class BasePredictor:
         self.source_type = None
         self.callbacks = defaultdict(list, callbacks.default_callbacks)  # add callbacks
         callbacks.add_integration_callbacks(self)
-
+        
+    def pre_transform(self, im):
+        """Pre-tranform input image before inference.
+        Args:
+            im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+        Return: A list of transformed imgs.
+        """
+        same_shapes = all(x.shape == im[0].shape for x in im)
+        auto = same_shapes and self.model.pt
+        return [LetterBox(self.imgsz, auto=auto, stride=self.model.stride)(image=x) for x in im]
+    
     def preprocess(self, im):
         """Prepares input image before inference.
         Args:
             im (torch.Tensor | List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
         """
         if not isinstance(im, torch.Tensor):
-            auto = all(x.shape == im[0].shape for x in im) and self.model.pt
+            im = np.stack(self.pre_transform(im))
             if not auto:
                 LOGGER.warning(
                     'WARNING ⚠️ Source shapes differ. For optimal performance supply similarly-shaped sources.')

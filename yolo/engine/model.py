@@ -129,15 +129,13 @@ class YOLO:
     def _load(self, weights: str, task=None):
         """
         Initializes a new model and infers the task type from the model head.
-
         Args:
             weights (str): model checkpoint to be loaded
             task (str) or (None): model task
         """
         suffix = Path(weights).suffix
-        #from models.experimental import attempt_load
         if suffix == '.pt':
-            self.model, self.ckpt = attempt_load_one_weight(weights) 
+            self.model, self.ckpt = attempt_load_one_weight(weights)
             self.task = self.model.args['task']
             self.overrides = self.model.args = self._reset_ckpt_args(self.model.args)
             self.ckpt_path = self.model.pt_path
@@ -146,8 +144,8 @@ class YOLO:
             self.model, self.ckpt = weights, None
             self.task = task or guess_model_task(weights)
             self.ckpt_path = weights
-    
         self.overrides['model'] = weights
+        self.overrides['task'] = self.task
 
     def _check_is_pytorch_model(self):
         """
@@ -161,16 +159,10 @@ class YOLO:
                             f"'yolo export model=yolov8n.pt', but exported formats like ONNX, TensorRT etc. only "
                             f"support 'predict' and 'val' modes, i.e. 'yolo predict model=yolov8n.onnx'.")
 
-    def _check_pip_update(self):
+    @smart_inference_mode()
+    def reset_weights(self):
         """
-        Inform user of ultralytics package update availability
-        """
-        if ONLINE and is_pip_package():
-            check_pip_update_available()
-
-    def reset(self):
-        """
-        Resets the model modules.
+        Resets the model modules parameters to randomly initialized values, losing all training information.
         """
         self._check_is_pytorch_model()
         for m in self.model.modules():
@@ -178,17 +170,28 @@ class YOLO:
                 m.reset_parameters()
         for p in self.model.parameters():
             p.requires_grad = True
+        return self
+    @smart_inference_mode()
+    def load(self, weights='yolov8n.pt'):
+        """
+        Transfers parameters with matching names and shapes from 'weights' to model.
+        """
+        self._check_is_pytorch_model()
+        if isinstance(weights, (str, Path)):
+            weights, self.ckpt = attempt_load_one_weight(weights)
+        self.model.load(weights)
+        return self
 
-    def info(self, verbose=True):
+     def info(self, detailed=False, verbose=True):
         """
         Logs model info.
-
         Args:
+            detailed (bool): Show detailed information about model.
             verbose (bool): Controls verbosity.
         """
         self._check_is_pytorch_model()
-        self.model.info(verbose=verbose)
-
+        return self.model.info(detailed=detailed, verbose=verbose)
+    
     def fuse(self):
         self._check_is_pytorch_model()
         self.model.fuse()

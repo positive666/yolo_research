@@ -102,36 +102,51 @@ class BaseMixTransform:
 
 
 class Mosaic(BaseMixTransform):
-    """Mosaic augmentation.
-    Args:
-        imgsz (Sequence[int]): Image size after mosaic pipeline of single
-            image. The shape order should be (height, width).
-            Default to (640, 640).
+    """
+    Mosaic augmentation.
+
+    This class performs mosaic augmentation by combining multiple (4 or 9) images into a single mosaic image.
+    The augmentation is applied to a dataset with a given probability.
+
+    Attributes:
+        dataset: The dataset on which the mosaic augmentation is applied.
+        imgsz (int, optional): Image size (height and width) after mosaic pipeline of a single image. Default to 640.
+        p (float, optional): Probability of applying the mosaic augmentation. Must be in the range 0-1. Default to 1.0.
+        n (int, optional): The grid size, either 4 (for 2x2) or 9 (for 3x3).
     """
 
-    def __init__(self, dataset, imgsz=640, p=1.0, border=(0, 0)):
-        assert 0 <= p <= 1.0, "The probability should be in range [0, 1]. " f"got {p}."
+    def __init__(self, dataset, imgsz=640, p=1.0, n=9):
+        """Initializes the object with a dataset, image size, probability, and border."""
+        assert 0 <= p <= 1.0, f'The probability should be in range [0, 1], but got {p}.'
+        assert n in (4, 9), 'grid must be equal to 4 or 9.'
         super().__init__(dataset=dataset, p=p)
         self.dataset = dataset
         self.imgsz = imgsz
-        self.border = border
+        self.border = [-imgsz // 2, -imgsz // 2] if n == 4 else [-imgsz, -imgsz]
+        self.n = n
 
     def get_indexes(self):
-        return [random.randint(0, len(self.dataset) - 1) for _ in range(3)]
+        """Return a list of random indexes from the dataset."""
+        return [random.randint(0, len(self.dataset) - 1) for _ in range(self.n - 1)]
 
     def _mix_transform(self, labels):
+        """Apply mixup transformation to the input image and labels."""
+        assert labels.get('rect_shape', None) is None, 'rect and mosaic are mutually exclusive.'
+        assert len(labels.get('mix_labels', [])), 'There are no other images for mosaic augment.'
+        return self._mosaic4(labels) if self.n == 4 else self._mosaic9(labels)
+
+    def _mosaic4(self, labels):
+        """Create a 2x2 image mosaic."""
         mosaic_labels = []
-        assert labels.get("rect_shape", None) is None, "rect and mosaic is exclusive."
-        assert len(labels.get("mix_labels", [])) > 0, "There are no other images for mosaic augment."
         s = self.imgsz
         yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.border)  # mosaic center x, y
         for i in range(4):
-            labels_patch = labels if i == 0 else labels["mix_labels"][i - 1]
+            labels_patch = labels if i == 0 else labels['mix_labels'][i - 1]
             # Load image
-            img = labels_patch["img"]
-            h, w = labels_patch.pop("resized_shape")
+            img = labels_patch['img']
+            h, w = labels_patch.pop('resized_shape')
 
-            # place img in img4
+            # Place img in img4
             if i == 0:  # top left
                 img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
                 x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
@@ -153,34 +168,84 @@ class Mosaic(BaseMixTransform):
             labels_patch = self._update_labels(labels_patch, padw, padh)
             mosaic_labels.append(labels_patch)
         final_labels = self._cat_labels(mosaic_labels)
-        final_labels["img"] = img4
+        final_labels['img'] = img4
         return final_labels
 
-    def _update_labels(self, labels, padw, padh):
-        """Update labels"""
-        nh, nw = labels["img"].shape[:2]
-        labels["instances"].convert_bbox(format="xyxy")
-        labels["instances"].denormalize(nw, nh)
-        labels["instances"].add_padding(padw, padh)
+    def _mosaic9(self, labels):
+        """Create a 3x3 image mosaic."""
+        mosaic_labels = []
+        s = self.imgsz
+        hp, wp = -1, -1  # height, width previous
+        for i in range(9):
+            labels_patch = labels if i == 0 else labels['mix_labels'][i - 1]
+            # Load image
+            img = labels_patch['img']
+            h, w = labels_patch.pop('resized_shape')
+
+            # Place img in img9
+            if i == 0:  # center
+                img9 = np.full((s * 3, s * 3, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
+                h0, w0 = h, w
+                c = s, s, s + w, s + h  # xmin, ymin, xmax, ymax (base) coordinates
+            elif i == 1:  # top
+                c = s, s - h, s + w, s
+            elif i == 2:  # top right
+                c = s + wp, s - h, s + wp + w, s
+            elif i == 3:  # right
+                c = s + w0, s, s + w0 + w, s + h
+            elif i == 4:  # bottom right
+                c = s + w0, s + hp, s + w0 + w, s + hp + h
+            elif i == 5:  # bottom
+                c = s + w0 - w, s + h0, s + w0, s + h0 + h
+            elif i == 6:  # bottom left
+                c = s + w0 - wp - w, s + h0, s + w0 - wp, s + h0 + h
+            elif i == 7:  # left
+                c = s - w, s + h0 - h, s, s + h0
+            elif i == 8:  # top left
+                c = s - w, s + h0 - hp - h, s, s + h0 - hp
+
+            padw, padh = c[:2]
+            x1, y1, x2, y2 = (max(x, 0) for x in c)  # allocate coords
+
+            # Image
+            img9[y1:y2, x1:x2] = img[y1 - padh:, x1 - padw:]  # img9[ymin:ymax, xmin:xmax]
+            hp, wp = h, w  # height, width previous for next iteration
+
+            labels_patch = self._update_labels(labels_patch, padw, padh)
+            mosaic_labels.append(labels_patch)
+        final_labels = self._cat_labels(mosaic_labels)
+        final_labels['img'] = img9
+        return final_labels
+
+    @staticmethod
+    def _update_labels(labels, padw, padh):
+        """Update labels."""
+        nh, nw = labels['img'].shape[:2]
+        labels['instances'].convert_bbox(format='xyxy')
+        labels['instances'].denormalize(nw, nh)
+        labels['instances'].add_padding(padw, padh)
         return labels
 
     def _cat_labels(self, mosaic_labels):
+        """Return labels with mosaic border instances clipped."""
         if len(mosaic_labels) == 0:
             return {}
         cls = []
         instances = []
         for labels in mosaic_labels:
-            cls.append(labels["cls"])
-            instances.append(labels["instances"])
+            cls.append(labels['cls'])
+            instances.append(labels['instances'])
         final_labels = {
-            "im_file": mosaic_labels[0]["im_file"],
-            "ori_shape": mosaic_labels[0]["ori_shape"],
-            "resized_shape": (self.imgsz * 2, self.imgsz * 2),
-            "cls": np.concatenate(cls, 0),
-            "instances": Instances.concatenate(instances, axis=0),
-            "mosaic_border": self.border}
-        final_labels["instances"].clip(self.imgsz * 2, self.imgsz * 2)
+            'im_file': mosaic_labels[0]['im_file'],
+            'ori_shape': mosaic_labels[0]['ori_shape'],
+            'resized_shape': (self.imgsz * 2, self.imgsz * 2),
+            'cls': np.concatenate(cls, 0),
+            'instances': Instances.concatenate(instances, axis=0),
+            'mosaic_border': self.border}  # final_labels
+        clip_size = self.imgsz * (2 if self.n == 4 else 3)
+        final_labels['instances'].clip(clip_size, clip_size)
         return final_labels
+
 
 
 class MixUp(BaseMixTransform):
@@ -660,7 +725,7 @@ class Format:
 
 def v8_transforms(dataset, imgsz, hyp):
     pre_transform = Compose([
-        Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic, border=[-imgsz // 2, -imgsz // 2]),
+        Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic),
         CopyPaste(p=hyp.copy_paste),
         RandomPerspective(
             degrees=hyp.degrees,
