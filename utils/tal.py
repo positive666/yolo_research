@@ -113,7 +113,7 @@ class TaskAlignedAssigner(nn.Module):
         target_labels, target_bboxes, target_scores = self.get_targets(gt_labels, gt_bboxes, target_gt_idx, fg_mask)
 
         # normalize：归一化
-        align_metric *= mask_pos #,mask_pos每个anchor box是否与gt_box相交，如果相交，则为1，否则为0, 等价没有分配gt_box的anchorbox的对齐度量设置为0
+        align_metric *= mask_pos #mask_pos每个anchor box是否与gt_box相交，如果相交，则为1，否则为0, 等价没有分配gt_box的anchorbox的对齐度量设置为0
         pos_align_metrics = align_metric.amax(axis=-1, keepdim=True)  # b, max_num_obj：gt box和所有anchor box对应的最大度量值，
         pos_overlaps = (overlaps * mask_pos).amax(axis=-1, keepdim=True)  # b, max_num_obj：gt box和所有anchor box之间的最大IoU值
         norm_align_metric = (align_metric * pos_overlaps / (pos_align_metrics + self.eps)).amax(-2).unsqueeze(-1) #每个anchor box的归一化因子：归一化目标分数target_scores
@@ -200,7 +200,7 @@ class TaskAlignedAssigner(nn.Module):
             gt_bboxes: (b, max_num_obj, 4)
             target_gt_idx: (b, h*w)
             fg_mask: (b, h*w)
-            根据分配给每个anchor box的ground truth box，得到其对应的目标类别、目标框和目标分数
+            根据分配给每个anchor box的gt_box,得到其对应的目标类别、目标框和目标分数
         """
 
         # assigned target labels, (b, 1)，batch索引
