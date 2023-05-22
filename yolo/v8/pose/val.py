@@ -202,7 +202,7 @@ def val(cfg=DEFAULT_CFG, use_python=False):
 
     args = dict(model=model, data=data)
     if use_python:
-        from ultralytics import YOLO
+        from yolo.engine.model import YOLO
         YOLO(model).val(**args)
     else:
         validator = PoseValidator(args=args)

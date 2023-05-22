@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, GPL-3.0 license
+#From Ultralytics YOLO 🚀, GPL-3.0 license
 
 import torch
 import torch.nn as nn
@@ -103,7 +103,7 @@ class TaskAlignedAssigner(nn.Module):
             return (torch.full_like(pd_scores[..., 0], self.bg_idx).to(device), torch.zeros_like(pd_bboxes).to(device),
                     torch.zeros_like(pd_scores).to(device), torch.zeros_like(pd_scores[..., 0]).to(device),
                     torch.zeros_like(pd_scores[..., 0]).to(device))
-
+        # 获取正样本掩码，、匹配度、重叠度
         mask_pos, align_metric, overlaps = self.get_pos_mask(pd_scores, pd_bboxes, gt_labels, gt_bboxes, anc_points,
                                                              mask_gt)
         # get target IOU match：解决一个anchor和多个GT框匹配问题
@@ -141,7 +141,7 @@ class TaskAlignedAssigner(nn.Module):
             overlaps = torch.empty((self.bs, self.n_max_boxes, pd_scores.shape[1]), device=pd_scores.device)
             ind_0 = torch.empty(self.n_max_boxes, dtype=torch.long)
             for b in range(self.bs):
-                """ get gt_labes info --->improve (使用 roll_out 策略时，只计算那些被标签所覆盖的边框与 GT 之间的 CIoU，减少了计算量
+                """ gt_labes info --->improve (使用 roll_out 策略时，只计算那些被标签所覆盖的边框与 GT 之间的 CIoU,减少了计算量
                 而对于那些不被 ground truth 标签所覆盖的边框，将被舍弃，避免了计算冗余和过多内存消耗)   """
                 # form gt_label    
                 ind_0[:], ind_2 = b, gt_labels[b].squeeze(-1).long()   

@@ -96,7 +96,7 @@ def predict(cfg=DEFAULT_CFG, use_python=False):
 
     args = dict(model=model, source=source)
     if use_python:
-        from ultralytics import YOLO
+        from yolo.engine.model import YOLO
         YOLO(model)(**args)
     else:
         predictor = PosePredictor(overrides=args)
