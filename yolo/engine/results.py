@@ -199,6 +199,10 @@ class Results(SimpleClass):
         Returns:
             (numpy.ndarray): A numpy array of the annotated image.
         """
+        if img is None and isinstance(self.orig_img, torch.Tensor):
+            LOGGER.warning('WARNING ⚠️ Results plotting is not supported for torch.Tensor image types.')
+            return
+        
         # Deprecation warn TODO: remove in 8.2
         if 'show_conf' in kwargs:
             deprecation_warn('show_conf', 'conf')

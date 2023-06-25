@@ -32,6 +32,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import cv2
+import numpy as np
 import torch
 
 from models.common import DetectMultiBackend as AutoBackend
@@ -122,24 +123,22 @@ class BasePredictor:
         """Prepares input image before inference.
         Args:
             im (torch.Tensor | List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+            im (torch.Tensor | List(np.ndarray)): BCHW for tensor, [(HWC) x B] for list.
         """
-        if not isinstance(im, torch.Tensor):
+
+        not_tensor = not isinstance(im, torch.Tensor)  
+        if not_tensor:    
             im = np.stack(self.pre_transform(im))
-            if not auto:
-                LOGGER.warning(
-                    'WARNING ⚠️ Source shapes differ. For optimal performance supply similarly-shaped sources.')
-            same_shapes = all(x.shape == im[0].shape for x in im)
-            auto = same_shapes and self.model.pt
-            im = np.stack([LetterBox(self.imgsz, auto=auto, stride=self.model.stride)(image=x) for x in im])
             im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
             im = np.ascontiguousarray(im)  # contiguous
             im = torch.from_numpy(im)
-        # NOTE: assuming im with (b, 3, h, w) if it's a tensor
+            
         img = im.to(self.device)
         img = img.half() if self.model.fp16 else img.float()  # uint8 to fp16/32
-        img /= 255  # 0 - 255 to 0.0 - 1.0
+        if not_tensor:
+            img /= 255  # 0 - 255 to 0.0 - 1.0
         return img
-
+    
     def write_results(self, idx, results, batch):
         """Write inference results to a file or directory."""
         p, im, _ = batch
@@ -147,7 +146,7 @@ class BasePredictor:
         if len(im.shape) == 3:
             im = im[None]  # expand for batch dim
         self.seen += 1
-        if self.source_type.webcam or self.source_type.from_img:  # batch_size >= 1
+        if self.source_type.webcam or self.source_type.from_img or self.source_type.tensor:  # batch_size >= 1
             log_string += f'{idx}: '
             frame = self.dataset.count
         else:
@@ -158,10 +157,11 @@ class BasePredictor:
         result = results[idx]
         log_string += result.verbose()
         if self.args.save or self.args.show:  # Add bbox to image
-            plot_args = dict(line_width=self.args.line_thickness,
-                             boxes=self.args.boxes,
-                             conf=self.args.show_conf,
-                             labels=self.args.show_labels)
+            plot_args = {
+                'line_width': self.args.line_width,
+                'boxes': self.args.boxes,
+                'conf': self.args.show_conf,
+                'labels': self.args.show_labels}
             if not self.args.retina_masks:
                 plot_args['im_gpu'] = im[idx]
             self.plotted_img = result.plot(**plot_args)
@@ -208,15 +208,22 @@ class BasePredictor:
         # Setup model
         if not self.model:
             self.setup_model(model)
+            
         # Setup source every time predict is called
         self.setup_source(source if source is not None else self.args.source)
         # Check if save_dir/ label file exists
         if self.args.save or self.args.save_txt:
             (self.save_dir / 'labels' if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
+            
         # Warmup model
         if not self.done_warmup:
             self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
             self.done_warmup = True
+            
+         # Checks
+        if self.source_type.tensor and (self.args.save or self.args.save_txt or self.args.show):
+            LOGGER.warning("WARNING ⚠️ 'save', 'save_txt' and 'show' arguments not enabled for torch.Tensor inference.")
+
         self.seen, self.windows, self.dt, self.batch = 0, [], (ops.Profile(), ops.Profile(), ops.Profile()), None
         self.run_callbacks('on_predict_start')
         for batch in self.dataset:
@@ -242,9 +249,7 @@ class BasePredictor:
                     'preprocess': self.dt[0].dt * 1E3 / n,
                     'inference': self.dt[1].dt * 1E3 / n,
                     'postprocess': self.dt[2].dt * 1E3 / n}
-                if self.source_type.tensor:  # skip write, show and plot operations if input is raw tensor
-                    continue
-                p, im0 = path[i], im0s[i].copy()
+                p, im0 = path[i], None if self.source_type.tensor else im0s[i].copy()
                 p = Path(p)
                 if self.args.verbose or self.args.save or self.args.save_txt or self.args.show:
                     s += self.write_results(i, self.results, (p, im, im0))
@@ -264,11 +269,12 @@ class BasePredictor:
         if self.args.verbose and self.seen:
             t = tuple(x.t / self.seen * 1E3 for x in self.dt)  # speeds per image
             LOGGER.info(f'Speed: %.1fms preprocess, %.1fms inference, %.1fms postprocess per image at shape '
-                        f'{(1, 3, *self.imgsz)}' % t)
+                        f'{(1, 3, *im.shape[2:])}' % t)
         if self.args.save or self.args.save_txt or self.args.save_crop:
             nl = len(list(self.save_dir.glob('labels/*.txt')))  # number of labels
             s = f"\n{nl} label{'s' * (nl > 1)} saved to {self.save_dir / 'labels'}" if self.args.save_txt else ''
             LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
+            
         self.run_callbacks('on_predict_end')
 
     def setup_model(self, model, verbose=True):

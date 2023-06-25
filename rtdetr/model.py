@@ -6,13 +6,13 @@
 from pathlib import Path
 
 from models.yolo import DetectionModel
-from models.experimental attempt_load_one_weight, yaml_model_load
+from models.experimental import attempt_load_one_weight, yaml_model_load
 
 from yolo.cfg import get_cfg
 from yolo.engine.exporter import Exporter
 from yolo.utils import DEFAULT_CFG, DEFAULT_CFG_DICT, LOGGER, ROOT, is_git_dir
 from yolo.utils.checks import check_imgsz
-from yolo.utils.torch_utils import model_info
+from utils.torch_utils import model_info
 
 from  utils.torch_utils import smart_inference_mode
 from .predict import RTDETRPredictor

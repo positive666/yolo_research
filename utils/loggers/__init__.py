@@ -42,7 +42,7 @@ except (ImportError, AssertionError):
     clearml = None
 
 try:
-    if RANK not in [0, -1]:
+    if RANK not in {0, -1}:
         comet_ml = None
     else:
         import comet_ml
@@ -50,7 +50,7 @@ try:
         assert hasattr(comet_ml, '__version__')  # verify package import not local dir
         from utils.loggers.comet import CometLogger
 
-except (ModuleNotFoundError, ImportError, AssertionError):
+except (ModuleNotFoundError, AssertionError):
     comet_ml = None
 
 
